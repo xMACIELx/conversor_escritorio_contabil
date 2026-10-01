@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Ponto → Folha Domínio</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="../assets/shared.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="wrap">
+      <div class="top-nav">
+        <a href="../" class="back-link">← Início</a>
+        <h1>Ponto <span>→ Folha Domínio</span></h1>
+      </div>
+      <p class="privacy"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1 2.5 3v4.5c0 3.3 2.3 6 5.5 7.5 3.2-1.5 5.5-4.2 5.5-7.5V3L8 1Zm-1 9.2L4.8 8l.9-.9L7 8.4l3.3-3.3.9.9L7 10.2Z" fill="currentColor"/></svg>
+        Seus dados não saem deste computador</p>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="step">
+      <h2><b>1</b> Envie o relatório do ponto <b>2</b> e a planilha da Domínio</h2>
+      <div class="uploads">
+        <label id="drop-pdf" class="drop" tabindex="0">
+          <input id="file-pdf" type="file" accept=".pdf,application/pdf" hidden>
+          <span class="drop-title">Relatório do ponto (PDF)</span>
+          <span class="drop-main" id="pdf-main">Arraste o PDF aqui</span>
+          <span class="drop-sub" id="pdf-sub">ou clique para procurar no computador</span>
+        </label>
+        <label id="drop-xls" class="drop" tabindex="0">
+          <input id="file-xls" type="file" accept=".xls,.xlsx" hidden>
+          <span class="drop-title">Planilha padrão da Domínio (.xls)</span>
+          <span class="drop-main" id="xls-main">Arraste a planilha aqui</span>
+          <span class="drop-sub" id="xls-sub">ou clique para procurar no computador</span>
+        </label>
+      </div>
+      <p id="load-error" class="banner bad" hidden></p>
+    </section>
+
+    <section id="review" hidden>
+      <section class="step">
+        <h2><b>3</b> Confira o resumo</h2>
+        <div id="banner" class="banner"></div>
+        <ul id="checks" class="checks"></ul>
+
+        <details class="panel" id="cfg-panel">
+          <summary>Regras de conversão em uso <small>(clique para ver ou ajustar)</small></summary>
+          <p class="hint">Minutos = horas decimais × 60, arredondado. Dias = horas ÷ divisor, arredondado para o dia inteiro mais próximo.</p>
+          <div class="divisores">
+            <label>Faltas não justificadas: 1 dia = <input type="text" id="div-faltas" inputmode="decimal" aria-label="Horas por dia (faltas)"> h <span class="tag conf">confirmado</span></label>
+            <label>DSR (repouso): 1 dia = <input type="text" id="div-dsr" inputmode="decimal" aria-label="Horas por dia (DSR)"> h <span class="tag aconf">a confirmar</span></label>
+          </div>
+          <table id="t-map"></table>
+        </details>
+      </section>
+
+      <section class="step" id="sec-match">
+        <h2>Colaboradores e conferência</h2>
+
+        <div id="box-aprox" class="matchbox warn" hidden>
+          <div class="panel" style="border:0;background:none"><strong>Nomes parecidos</strong>
+            <p class="hint">O nome do relatório é parte do nome da planilha. Marque “confirmar” só se for a mesma pessoa. Sem marcar, a pessoa fica de fora.</p></div>
+          <div id="list-aprox"></div>
+        </div>
+
+        <div id="box-sem" class="matchbox bad" hidden>
+          <div class="panel" style="border:0;background:none"><strong>Sem correspondência na planilha</strong>
+            <p class="hint">Estas pessoas ficam de fora do arquivo. Para incluir alguém, digite o código da folha dela (ele é acrescentado ao final da planilha).</p></div>
+          <div id="list-sem"></div>
+        </div>
+
+        <div id="box-excl" hidden>
+          <h3>Lista dos que ficaram de fora <button type="button" class="btn mini" id="copy-excl">Copiar</button></h3>
+          <textarea id="txt-excl" class="copy" readonly></textarea>
+        </div>
+
+        <div id="box-fecham" hidden>
+          <h3>Dias que não fecham inteiro <button type="button" class="btn mini" id="copy-fecham">Copiar</button></h3>
+          <p class="hint">Entraram arredondados. Se precisar corrigir, ajuste na planilha .xls antes de rodar o conversor.</p>
+          <textarea id="txt-fecham" class="copy" readonly></textarea>
+        </div>
+
+        <h3>Tabela de conferência</h3>
+        <div class="options"><label><input type="checkbox" id="only-attn"> Mostrar só o que pede atenção</label></div>
+        <div class="scroll"><table id="t-conf"></table></div>
+      </section>
+
+      <section class="step">
+        <h2><b>4</b> Baixe os arquivos</h2>
+        <div class="actions">
+          <button id="dl-xls" class="btn" type="button">Baixar planilha preenchida (.xls)</button>
+          <button id="dl-txt" class="btn" type="button">Baixar arquivo de importação (.txt)</button>
+          <span id="dl-note" class="note"></span>
+        </div>
+        <p class="note">A planilha gravada mantém o conteúdo e as fórmulas, mas a formatação visual do modelo (cores, bordas) pode não se manter.</p>
+      </section>
+    </section>
+  </main>
+
+  <footer class="wrap foot">Tudo é processado aqui no navegador. Nenhum dado é enviado, salvo ou registrado.</footer>
+
+  <script src="vendor/pdf.min.js"></script>
+  <script src="vendor/xlsx.full.min.js"></script>
+  <script src="config.js"></script>
+  <script src="pdf-parse.js"></script>
+  <script src="core.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

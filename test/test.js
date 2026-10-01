@@ -82,5 +82,10 @@ if (!fs.existsSync(domFile) || !fs.existsSync(refFile)) {
   console.log('\n  Competências:', res.competencias.map(c => c.key + '=' + c.count).join(', '));
 }
 
-console.log(failures ? '\n' + failures + ' teste(s) FALHARAM' : '\nTodos os testes passaram');
-process.exit(failures ? 1 : 0);
+require('./ponto.js')(check).then(() => {
+  console.log(failures ? '\n' + failures + ' teste(s) FALHARAM' : '\nTodos os testes passaram');
+  process.exit(failures ? 1 : 0);
+}, e => {
+  console.log('  FALHA testes do ponto abortaram: ' + (e && e.stack || e));
+  process.exit(1);
+});
