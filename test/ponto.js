@@ -24,14 +24,19 @@ module.exports = async function run(check) {
   check('0,03 h -> 2 min', min('0,03') === 2);
   check('55,73 h -> 3344 min', min('55,73') === 3344);
   check('milhar com ponto: 6.654,13 -> 665413 centésimos', Pdf.parseCentesimos('6.654,13') === 665413);
-  check('divisor de faltas = 8,80 h (confirmado) e DSR = 7,33 h', DIV.FALTAS === 880 && DIV.DSR === 733);
+  check('divisor de faltas = 8,80 h e DSR = 7,33 h (ambos confirmados)', DIV.FALTAS === 880 && DIV.DSR === 733);
   check('8,80 h = 1 dia fechado', (r => r.dias === 1 && r.fecha && !r.zerou)(Core.diasDeCentesimos(880, DIV.FALTAS)));
   check('17,60 h = 2 dias fechados', (r => r.dias === 2 && r.fecha)(Core.diasDeCentesimos(1760, DIV.FALTAS)));
   check('7,33 h de DSR = 1 dia', Core.diasDeCentesimos(733, DIV.DSR).dias === 1);
   check('14,66 h de DSR = 2 dias', (r => r.dias === 2 && r.fecha)(Core.diasDeCentesimos(1466, DIV.DSR)));
   check('4,40 h (meio dia) não fecha e arredonda para 1', (r => r.dias === 1 && !r.fecha)(Core.diasDeCentesimos(440, DIV.FALTAS)));
-  check('9,00 h = 1 dia, fecha (dentro de 0,1 dia)', (r => r.dias === 1 && r.fecha)(Core.diasDeCentesimos(900, DIV.FALTAS)));
+  check('tolerância de dia inteiro = 0,03 dia', CFG.TOLERANCIA_DIA_CENT === 3);
+  check('8,73 h de faltas = 1 dia, sem aviso (0,008 dia)', (r => r.dias === 1 && r.fecha)(Core.diasDeCentesimos(873, DIV.FALTAS)));
+  check('17,47 h de faltas = 2 dias, sem aviso (0,015 dia)', (r => r.dias === 2 && r.fecha)(Core.diasDeCentesimos(1747, DIV.FALTAS)));
+  check('9,00 h = 1 dia, fecha (0,023 dia de sobra)', (r => r.dias === 1 && r.fecha)(Core.diasDeCentesimos(900, DIV.FALTAS)));
+  check('9,10 h = 1 dia, não fecha (0,034 dia de sobra)', (r => r.dias === 1 && !r.fecha)(Core.diasDeCentesimos(910, DIV.FALTAS)));
   check('10,00 h = 1 dia, não fecha (0,14 dia de sobra)', (r => r.dias === 1 && !r.fecha)(Core.diasDeCentesimos(1000, DIV.FALTAS)));
+  check('DSR 6,67 h = 0,91 dia: entra 1 dia e NÃO fecha (amarelo)', (r => r.dias === 1 && !r.fecha && r.centDias === 91)(Core.diasDeCentesimos(667, DIV.DSR)));
   check('1,50 h arredonda para 0 dia: marcado como zerado', (r => r.dias === 0 && r.zerou && !r.fecha)(Core.diasDeCentesimos(150, DIV.FALTAS)));
   check('0 h não é "zerou"', !Core.diasDeCentesimos(0, DIV.FALTAS).zerou);
   check('dias com divisor alterado na tela (8,00 h)', Core.diasDeCentesimos(1600, 800).dias === 2);
@@ -167,6 +172,11 @@ module.exports = async function run(check) {
   check('validação: soma por evento e contagem de linhas ok', nivel('Soma por evento') === 'ok' && nivel('Contagem de linhas') === 'ok');
   check('validação: sem nenhum erro nas amostras', !r0.val.some(v => v.nivel === 'erro'), JSON.stringify(r0.val.filter(v => v.nivel === 'erro')));
   check('dias que não fecham são sinalizados e entram arredondados', r0.plano.naoFecham.length > 0 && r0.plano.naoFecham.every(x => !x.fecha && x.valor >= 0));
+  const raf = r0.plano.conferencia.find(l => l.nome === 'Rafaela Amanda Stevens Dutra' && l.origem === '50201');
+  check('Rafaela Amanda Stevens Dutra (50201: 6,67 h = 0,91 dia) aparece em amarelo, entra 1 dia',
+    raf && raf.horas === 667 && raf.status === 'naofecha' && raf.valor === 1 && r0.plano.naoFecham.includes(raf), JSON.stringify(raf));
+  const semAviso = r0.plano.conferencia.filter(l => l.origem === '50001' && (l.horas === 873 || l.horas === 1747));
+  check('faltas de 8,73 h e 17,47 h seguem sem aviso (' + semAviso.length + ' na amostra)', semAviso.length > 0 && semAviso.every(l => l.fecha && l.status !== 'naofecha'), JSON.stringify(semAviso.map(l => l.nome + l.status)));
 
   // quem tem código digitado entra; aproximado confirmado entra
   const dec1 = decBase();

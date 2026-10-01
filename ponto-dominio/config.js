@@ -6,13 +6,13 @@
 
   // Divisores para converter horas em dias, em CENTÉSIMOS DE HORA (inteiros).
   // FALTAS: CONFIRMADO pela contadora. 1 dia = 8,80 h (8:48; jornada de 44 h semanais, seg a sex).
-  // DSR:    A CONFIRMAR com a contadora (ela ainda não respondeu). Padrão 7,33 h.
+  // DSR:    CONFIRMADO pela contadora. 1 dia = 7,33 h (220 h / 30).
   const DIVISOR_FALTAS_CENT = 880;
   const DIVISOR_DSR_CENT = 733;
 
-  // Um valor "fecha dia inteiro" se estiver a até 0,1 dia de um número inteiro.
-  // Em centésimos de dia: 10.
-  const TOLERANCIA_DIA_CENT = 10;
+  // Um valor "fecha dia inteiro" se estiver a até 0,03 dia de um número inteiro.
+  // Em centésimos de dia: 3.
+  const TOLERANCIA_DIA_CENT = 3;
 
   // Mapeamento: evento do relatório do ponto -> evento da Domínio.
   // unidade: 'minutos' (horas decimais x 60) ou 'dias' (horas / divisor).

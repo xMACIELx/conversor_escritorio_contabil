@@ -113,7 +113,7 @@ ponto-dominio/
 
 - **Planilha = fonte de verdade** para empresa (C3), competência (C6), tipo de cálculo (coluna A), código folha (B) e nomes (C). O "contrato" do relatório não é o código folha.
 - **Minutos** (0025 noturno, 0150 base extra 50%, 0240 base extras 65%, 0235 faltas/atrasos): `floor((centésimos × 60 + 50) / 100)`. Ex.: 55,73 h → 3344; 0,80 → 48; 0,18 → 11.
-- **Dias** (0260 faltas não justificadas, 8794 DSR): horas ÷ divisor, arredondado ao inteiro mais próximo. Valores a mais de 0,1 dia de um inteiro entram arredondados, em **amarelo** na conferência, com as horas originais e uma lista copiável no resumo. Valor não zero que arredonda para 0 é avisado (sumiria do arquivo).
+- **Dias** (0260 faltas não justificadas, 8794 DSR): horas ÷ divisor, arredondado ao inteiro mais próximo. Valores a mais de 0,03 dia de um inteiro entram arredondados, em **amarelo** na conferência, com as horas originais e uma lista copiável no resumo. Valor não zero que arredonda para 0 é avisado (sumiria do arquivo).
 - Aritmética sempre inteira (centésimos), sem ponto flutuante.
 - **0240** não existe na planilha-modelo: a ferramenta cria a coluna na primeira posição livre (linha 10 vazia, 999 ou 9999 — hoje a coluna J), com nome na linha 9 e código na linha 10.
 - **Eventos do relatório fora da tabela** aparecem como erro em destaque; nada some em silêncio.
@@ -126,7 +126,7 @@ ponto-dominio/
 | Constante | Valor | Situação |
 |---|---|---|
 | `DIVISOR_FALTAS_CENT` | 8,80 h (8:48; 44 h semanais, seg a sex) | **Confirmado** pela contadora |
-| `DIVISOR_DSR_CENT` | 7,33 h | **A CONFIRMAR** com a contadora (ainda sem resposta) |
+| `DIVISOR_DSR_CENT` | 7,33 h (220 h / 30) | **Confirmado** pela contadora |
 
 Ambos podem ser alterados na própria tela (painel "Regras de conversão em uso") para simular; para mudar o padrão, edite `config.js`.
 
