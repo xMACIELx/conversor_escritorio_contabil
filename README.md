@@ -109,6 +109,14 @@ ponto-dominio/
 └── vendor/           # pdf.js 3.11.174 (+ worker) e SheetJS (xlsx) 0.18.5, copiados do npm; sem CDN
 ```
 
+### Decisões da contadora (01/10/2026)
+
+- **Faltas (0260):** 1 dia = 8,80 h (jornada de 44 h semanais, seg a sex). Faltas abaixo de meio dia (que arredondam para 0 dia) são lançadas **à mão** na Domínio. Meio dia (0,5) não é aceito, porque não calcula certo.
+- **DSR (8794):** 1 dia = 7,33 h (220 h / 30). Valores que não fecham (ex.: 6,67 h) entram como o dia mais próximo.
+- **Faltas/atrasos (0235) e adicional noturno (0025):** em minutos.
+- **Hora extra 65% = rubrica 0240.** Base Extra é o que vai para a folha.
+- **Colaboradores sem correspondência:** ficam fora do arquivo, com opção de digitar o código folha.
+
 ### Regras
 
 - **Planilha = fonte de verdade** para empresa (C3), competência (C6), tipo de cálculo (coluna A), código folha (B) e nomes (C). O "contrato" do relatório não é o código folha.
