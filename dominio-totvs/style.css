@@ -1,35 +1,4 @@
-:root {
-  --paper: #f6f2ea;
-  --card: #fffdf8;
-  --ink: #1f2a26;
-  --muted: #6a736d;
-  --line: #ddd5c4;
-  --accent: #1d5c4a;
-  --accent-ink: #ffffff;
-  --ok: #1b7a43;
-  --ok-bg: #e4f2e8;
-  --err: #b3261e;
-  --err-bg: #fbe7e4;
-  --info: #2f5d8a;
-}
-* { box-sizing: border-box; }
-body {
-  margin: 0;
-  background: var(--paper);
-  color: var(--ink);
-  font: 16px/1.5 "Segoe UI", system-ui, -apple-system, sans-serif;
-}
-.wrap { max-width: 880px; margin: 0 auto; padding: 0 20px; }
-
-.top { background: var(--accent); color: var(--accent-ink); padding: 22px 0 18px; }
-.top .wrap { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 24px; }
-h1 { margin: 0; font-size: 1.45rem; font-weight: 600; letter-spacing: -.01em; }
-h1 span { font-weight: 400; opacity: .8; }
-.privacy {
-  margin: 0; font-size: .92rem; font-weight: 600;
-  background: rgba(255,255,255,.15); padding: 4px 12px 4px 9px; border-radius: 99px;
-  display: inline-flex; align-items: center; gap: 7px;
-}
+/* Estilos específicos do conversor Domínio -> TOTVS */
 
 .step { margin-top: 30px; }
 h2 { font-size: 1.1rem; margin: 0 0 12px; display: flex; align-items: center; gap: 10px; }
@@ -86,12 +55,4 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600
 }
 
 .actions { margin: 26px 0 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
-.btn {
-  background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 10px;
-  padding: 14px 28px; font: inherit; font-size: 1.1rem; font-weight: 600; cursor: pointer;
-}
-.btn:hover { filter: brightness(1.12); }
-.btn:focus-visible { outline: 3px solid #8fc4b0; outline-offset: 2px; }
 .note { color: var(--muted); font-size: .92rem; }
-
-.foot { margin: 40px auto 30px; color: var(--muted); font-size: .85rem; }

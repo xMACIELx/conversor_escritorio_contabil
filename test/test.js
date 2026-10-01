@@ -1,7 +1,8 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const C = require('../converter.js');
+const C = require('../dominio-totvs/converter.js');
+const tools = require('../assets/tools.js');
 
 let failures = 0;
 function check(name, ok, detail) {
@@ -9,11 +10,22 @@ function check(name, ok, detail) {
   if (!ok) failures++;
 }
 
+console.log('Testes do registro de ferramentas (assets/tools.js)');
+check('tools.js exporta uma lista de ferramentas', Array.isArray(tools) && tools.length > 0);
+tools.forEach(tool => {
+  if (tool.status === 'pronto') {
+    const dir = path.join(__dirname, '..', tool.caminho);
+    const indexPath = path.join(dir, 'index.html');
+    const exists = fs.existsSync(dir) && fs.existsSync(indexPath);
+    check(`ferramenta "${tool.id}" aponta para pasta com index.html (${tool.caminho})`, exists);
+  }
+});
+
 const SAMPLES = path.join(__dirname, '..', 'samples');
 const domFile = path.join(SAMPLES, 'GOTA DOMINIO GERADO.TXT');
 const refFile = path.join(SAMPLES, 'GOTA TESTE.TXT');
 
-console.log('Testes unitários');
+console.log('\nTestes unitários');
 check('vírgula antes dos 2 últimos dígitos, mantendo zeros', C.formatValue('00099385') === '000993,85');
 check('remove acentos sem mudar tamanho', (() => {
   const s = 'MÊS FÉRIAS PRÉ 13º SALÁRIO AÇÃO';

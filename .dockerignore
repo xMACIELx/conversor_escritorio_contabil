@@ -1,4 +1,5 @@
-samples
-test
-.git
+samples/
+test/
+.git/
 README.md
+README*
