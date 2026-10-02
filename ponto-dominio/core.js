@@ -171,7 +171,7 @@
   }
 
   function construirPlano(report, decisoes, divisores) {
-    const itens = [], naoMapeados = [], naoFecham = [], zerados = [], conferencia = [];
+    const itens = [], naoMapeados = [], naoFecham = [], zerados = [], conferencia = [], duplicados = [], vistos = new Set();
     const mapa = new Map(CFG.EVENTOS.map(e => [e.origem, e]));
     report.colaboradores.forEach((c, i) => {
       const d = decisoes[i], inc = incluido(d);
@@ -194,12 +194,15 @@
         else linha.status = zerou ? 'zerou' : (fecha ? 'ok' : 'naofecha');
         conferencia.push(linha);
         if (!inc) return;
+        const chave = i + '|' + map.evento;
+        if (vistos.has(chave)) duplicados.push(linha);
+        vistos.add(chave);
         if (!fecha) naoFecham.push(linha);
         if (zerou) zerados.push(linha);
         if (n > 0) itens.push(linha);
       });
     });
-    return { itens, naoMapeados, naoFecham, zerados, conferencia };
+    return { itens, naoMapeados, naoFecham, zerados, conferencia, duplicados };
   }
 
   // ---------- aplicar na planilha ----------
@@ -354,7 +357,7 @@
       const porEv = {};
       plano.naoMapeados.forEach(n => { porEv[n.origem + ' ' + n.descricao] = (porEv[n.origem + ' ' + n.descricao] || 0) + 1; });
       add('erro', 'Eventos do relatório sem mapeamento', 'Estes eventos NÃO entram no arquivo: ' +
-        Object.keys(porEv).map(k => k + ' (' + porEv[k] + ' lançamentos)').join('; ') + '. Inclua-os em config.js.');
+        Object.keys(porEv).map(k => k + ' (' + porEv[k] + ' lançamentos)').join('; ') + '. Avise o desenvolvedor com estes códigos.');
     }
 
     // conflitos de linha
@@ -369,13 +372,17 @@
     plano.itens.forEach(i => { somaPlano[i.evento] = (somaPlano[i.evento] || 0) + i.valor * 100; });
     const evs = Array.from(new Set(Object.keys(somaTxt).concat(Object.keys(somaPlano)))).sort();
     const difEv = evs.filter(k => (somaTxt[k] || 0) !== (somaPlano[k] || 0));
-    if (difEv.length) add('erro', 'Soma por evento', 'A soma do .txt não bate com a conversão do relatório nos eventos: ' + difEv.join(', ') +
+    if (txt.linhas.length === 0) add('erro', 'Nenhum lançamento gerado', 'O arquivo .txt ficou vazio: nenhum evento do relatório virou lançamento (veja os avisos acima e a tabela de conferência). Não há o que baixar.');
+    else if (difEv.length) add('erro', 'Soma por evento', 'A soma do .txt não bate com a conversão do relatório nos eventos: ' + difEv.join(', ') +
       '. (Se a planilha já tinha valores digitados, eles também entram no arquivo.)');
     else add('ok', 'Soma por evento', 'A soma de cada evento no .txt é igual à soma convertida do relatório (' + evs.join(', ') + ').');
-    if (txt.linhas.length !== plano.itens.length) add('erro', 'Contagem de linhas', 'O .txt tem ' + txt.linhas.length + ' linhas, mas o relatório gerou ' + plano.itens.length + ' lançamentos.');
+    if (txt.linhas.length === 0) { /* já sinalizado em 'Nenhum lançamento gerado' */ }
+    else if (txt.linhas.length !== plano.itens.length) add('erro', 'Contagem de linhas', 'O .txt tem ' + txt.linhas.length + ' linhas, mas o relatório gerou ' + plano.itens.length + ' lançamentos.');
     else add('ok', 'Contagem de linhas', txt.linhas.length + ' linhas no .txt, uma por lançamento.');
     txt.problemas.forEach(p => add('erro', 'Valor grande demais', p));
     if (txt.linhas.some(l => l.length !== 43)) add('erro', 'Tamanho das linhas', 'Há linhas do .txt que não têm 43 caracteres.');
+
+    if (plano.duplicados.length) add('erro', 'Evento repetido para a mesma pessoa', 'Dois eventos do relatório viram o mesmo evento da Domínio para: ' + plano.duplicados.map(d => d.nome + ' (' + d.evento + ')').join('; ') + '. O relatório mistura os dois layouts de código?');
 
     // colaboradores
     let inc = 0, ign = 0, agu = 0;

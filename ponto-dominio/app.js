@@ -133,7 +133,13 @@
     const t = $('t-map'); clear(t);
     const head = el('tr'); ['Evento do relatório', 'Evento Domínio', 'Unidade'].forEach(h => head.append(el('th', null, h)));
     t.append(head);
+    let grupoAtual = null;
     CFG.EVENTOS.forEach(e => {
+      if (e.grupo !== grupoAtual) {
+        grupoAtual = e.grupo;
+        const g = el('tr', 'grupo'), td = el('td', null, CFG.GRUPOS_EVENTOS[e.grupo]);
+        td.colSpan = 3; g.append(td); t.append(g);
+      }
       const tr = el('tr');
       tr.append(el('td', null, e.origem + ' ' + e.nome), el('td', null, e.evento),
         el('td', null, e.unidade === 'minutos' ? 'minutos' : 'dias (horas ÷ divisor ' + e.divisor + ')'));
@@ -195,7 +201,9 @@
     const temErro = r.val.some(v => v.nivel === 'erro'), temAviso = r.val.some(v => v.nivel === 'aviso');
     const banner = $('banner');
     banner.className = 'banner ' + (temErro ? 'bad' : temAviso ? 'warn' : 'good');
-    banner.textContent = temErro
+    banner.textContent = r.txt.linhas.length === 0
+      ? 'Nenhum lançamento gerado: nada para baixar. Veja os itens em vermelho.'
+      : temErro
       ? 'Atenção: há erros em vermelho. Revise antes de importar na Domínio.'
       : temAviso ? 'Quase lá: há avisos em amarelo para você conferir. ' + r.txt.linhas.length + ' lançamentos prontos.'
         : 'Tudo certo: ' + r.txt.linhas.length + ' lançamentos prontos e todas as conferências passaram.';
@@ -242,8 +250,10 @@
       t.append(tr);
     });
 
+    const vazio = r.txt.linhas.length === 0;
+    $('dl-xls').disabled = vazio; $('dl-txt').disabled = vazio;
     const aguarda = state.decisoes.some((d, i) => state.match[i].tipo === 'aprox' && !d.confirmado);
-    $('dl-note').textContent = r.txt.linhas.length + ' linhas no .txt' + (aguarda ? ' — há nomes parecidos sem confirmar (ficam de fora).' : '.');
+    $('dl-note').textContent = vazio ? 'Nenhum lançamento gerado: download desativado.' : r.txt.linhas.length + ' linhas no .txt' + (aguarda ? ' — há nomes parecidos sem confirmar (ficam de fora).' : '.');
   }
 
   // ---------- download ----------
@@ -277,13 +287,13 @@
     copyBtn('copy-excl', 'txt-excl'); copyBtn('copy-fecham', 'txt-fecham');
 
     $('dl-txt').addEventListener('click', () => {
-      if (!state.res || !confirmaSeErro()) return;
+      if (!state.res || !state.res.txt.linhas.length || !confirmaSeErro()) return;
       const c = state.res.ap.grade.competencia;
       const nome = 'LANCAMENTOS_' + (c ? c.aaaa + c.mm : 'SEMCOMP') + '.txt';
       baixar(new Blob([Core.txtComoTexto(state.res.txt.linhas)], { type: 'text/plain' }), nome);
     });
     $('dl-xls').addEventListener('click', () => {
-      if (!state.res || !confirmaSeErro()) return;
+      if (!state.res || !state.res.txt.linhas.length || !confirmaSeErro()) return;
       const out = window.XLSX.write(state.res.wb, { bookType: 'biff8', type: 'array' });
       const base = (state.xlsName || 'planilha').replace(/\.[^.]+$/, '');
       baixar(new Blob([out], { type: 'application/vnd.ms-excel' }), base + '_preenchida.xls');

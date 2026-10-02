@@ -30,16 +30,49 @@ module.exports = async function run(check) {
   check('7,33 h de DSR = 1 dia', Core.diasDeCentesimos(733, DIV.DSR).dias === 1);
   check('14,66 h de DSR = 2 dias', (r => r.dias === 2 && r.fecha)(Core.diasDeCentesimos(1466, DIV.DSR)));
   check('4,40 h (meio dia) não fecha e arredonda para 1', (r => r.dias === 1 && !r.fecha)(Core.diasDeCentesimos(440, DIV.FALTAS)));
-  check('tolerância de dia inteiro = 0,03 dia', CFG.TOLERANCIA_DIA_CENT === 3);
+  check('tolerância de dia inteiro = 0,04 dia', CFG.TOLERANCIA_DIA_CENT === 4);
+  check('34,93 h de faltas = 3,969 dias (4 x 8,73 h): 4 dias, sem aviso (desvio 0,031)', (r => r.dias === 4 && r.fecha)(Core.diasDeCentesimos(3493, DIV.FALTAS)));
+  check('4,00 h de faltas = 0,455 dia: amarelo (arredonda para 0)', (r => r.dias === 0 && !r.fecha && r.zerou)(Core.diasDeCentesimos(400, DIV.FALTAS)));
+  check('3,33 h de DSR = 0,454 dia: amarelo (arredonda para 0)', (r => r.dias === 0 && !r.fecha && r.zerou)(Core.diasDeCentesimos(333, DIV.DSR)));
   check('8,73 h de faltas = 1 dia, sem aviso (0,008 dia)', (r => r.dias === 1 && r.fecha)(Core.diasDeCentesimos(873, DIV.FALTAS)));
   check('17,47 h de faltas = 2 dias, sem aviso (0,015 dia)', (r => r.dias === 2 && r.fecha)(Core.diasDeCentesimos(1747, DIV.FALTAS)));
   check('9,00 h = 1 dia, fecha (0,023 dia de sobra)', (r => r.dias === 1 && r.fecha)(Core.diasDeCentesimos(900, DIV.FALTAS)));
-  check('9,10 h = 1 dia, não fecha (0,034 dia de sobra)', (r => r.dias === 1 && !r.fecha)(Core.diasDeCentesimos(910, DIV.FALTAS)));
+  check('9,10 h = 1 dia, fecha (0,034 dia de sobra, dentro de 0,04)', (r => r.dias === 1 && r.fecha)(Core.diasDeCentesimos(910, DIV.FALTAS)));
+  check('9,20 h = 1 dia, não fecha (0,045 dia de sobra)', (r => r.dias === 1 && !r.fecha)(Core.diasDeCentesimos(920, DIV.FALTAS)));
   check('10,00 h = 1 dia, não fecha (0,14 dia de sobra)', (r => r.dias === 1 && !r.fecha)(Core.diasDeCentesimos(1000, DIV.FALTAS)));
   check('DSR 6,67 h = 0,91 dia: entra 1 dia e NÃO fecha (amarelo)', (r => r.dias === 1 && !r.fecha && r.centDias === 91)(Core.diasDeCentesimos(667, DIV.DSR)));
   check('1,50 h arredonda para 0 dia: marcado como zerado', (r => r.dias === 0 && r.zerou && !r.fecha)(Core.diasDeCentesimos(150, DIV.FALTAS)));
   check('0 h não é "zerou"', !Core.diasDeCentesimos(0, DIV.FALTAS).zerou);
   check('dias com divisor alterado na tela (8,00 h)', Core.diasDeCentesimos(1600, 800).dias === 2);
+
+  console.log('\nPonto -> Folha Domínio: mapeamento dos dois layouts e falha silenciosa');
+  const mapa = new Map(CFG.EVENTOS.map(e => [e.origem, e]));
+  const esperadoMapa = {
+    '68001': '0025', '69050': '0150', '69065': '0240', '50101': '0235', '50001': '0260', '50201': '8794',
+    '00025': '0025', '00150': '0150', '00200': '0200', '00235': '0235', '00240': '0240', '00260': '0260', '08794': '8794'
+  };
+  check('mapeamento: 6 códigos de agosto + 7 de setembro, sem repetir origem', CFG.EVENTOS.length === 13 && mapa.size === 13);
+  check('mapeamento: cada código vira o evento da Domínio esperado', Object.keys(esperadoMapa).every(k => mapa.get(k) && mapa.get(k).evento === esperadoMapa[k]));
+  check('mapeamento: minutos (0025, 0150, 0200, 0235, 0240) e dias (0260 faltas, 8794 DSR)',
+    ['00025', '00150', '00200', '00235', '00240'].every(k => mapa.get(k).unidade === 'minutos') &&
+    mapa.get('00260').unidade === 'dias' && mapa.get('00260').divisor === 'FALTAS' &&
+    mapa.get('08794').unidade === 'dias' && mapa.get('08794').divisor === 'DSR');
+  check('mapeamento: os dois grupos têm título para a tela', CFG.EVENTOS.every(e => CFG.GRUPOS_EVENTOS[e.grupo]));
+  const rep0 = { colaboradores: [{ nome: 'X', eventos: [{ codigo: '00099', descricao: 'Novo', centesimos: 100 }] }] };
+  const p0 = Core.construirPlano(rep0, [{ tipo: 'exato', row: 11 }], DIV);
+  check('evento fora da tabela: não gera lançamento e é listado como sem mapeamento', p0.itens.length === 0 && p0.naoMapeados.length === 1);
+  const gv = { empresa: '316', competencia: { mm: '09', aaaa: '2026' }, linhas: [{ tipo: 11 }, { tipo: 11 }] };
+  const v0 = Core.validar({
+    report: { folha: 'Mensal', vencimento: '30/09/2026', colaboradores: [], totais: {} }, grade0: gv, plano: p0,
+    decisoes: [{ tipo: 'exato' }], ap: { criadas: [], linhasNovas: [] }, txt: { linhas: [], problemas: [] }
+  });
+  const nv = n => v0.find(v => v.label === n);
+  check('0 linhas no .txt: vermelho "Nenhum lançamento gerado"', nv('Nenhum lançamento gerado') && nv('Nenhum lançamento gerado').nivel === 'erro');
+  check('0 linhas no .txt: "Soma por evento" e "Contagem de linhas" NÃO ficam verdes', !nv('Soma por evento') && !nv('Contagem de linhas'));
+  check('aviso de eventos sem mapeamento fala com a contadora (sem "config.js")',
+    (t => /Avise o desenvolvedor com estes códigos/.test(t) && !/config\.js/.test(t))(nv('Eventos do relatório sem mapeamento').detail));
+  const appsrc = fs.readFileSync(path.join(DIR, 'app.js'), 'utf8');
+  check('botões de download desativados quando o .txt está vazio', /dl-xls'\)\.disabled = vazio/.test(appsrc) && /dl-txt'\)\.disabled = vazio/.test(appsrc));
 
   console.log('\nPonto -> Folha Domínio: nomes');
   check('normaliza maiúsculas, acentos e espaços', Core.normalizeName('  João  da   Conceição ') === 'JOAO DA CONCEICAO');

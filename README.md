@@ -120,10 +120,12 @@ ponto-dominio/
 ### Regras
 
 - **Planilha = fonte de verdade** para empresa (C3), competência (C6), tipo de cálculo (coluna A), código folha (B) e nomes (C). O "contrato" do relatório não é o código folha.
-- **Minutos** (0025 noturno, 0150 base extra 50%, 0240 base extras 65%, 0235 faltas/atrasos): `floor((centésimos × 60 + 50) / 100)`. Ex.: 55,73 h → 3344; 0,80 → 48; 0,18 → 11.
-- **Dias** (0260 faltas não justificadas, 8794 DSR): horas ÷ divisor, arredondado ao inteiro mais próximo. Valores a mais de 0,03 dia de um inteiro entram arredondados, em **amarelo** na conferência, com as horas originais e uma lista copiável no resumo. Valor não zero que arredonda para 0 é avisado (sumiria do arquivo).
+- **Dois layouts de código no relatório** (os dois são aceitos e aparecem na tabela de regras da tela): códigos do sistema de ponto (agosto: 68001, 69050, 69065, 50101, 50001, 50201) e códigos da própria Domínio com 5 dígitos (setembro: 00025 Adicional Notur, 00150 HE 50%, 00200 HE 100%, 00235 Outras Faltas, 00240 HE 65%, 00260 Faltas Injustif, 08794 DSR Perdido). Um código que não esteja em nenhum dos dois grupos é mostrado em vermelho (Avise o desenvolvedor com estes códigos).
+- **Sem lançamentos:** se nenhum evento virar linha no .txt, o resumo mostra em vermelho Nenhum lançamento gerado e os botões de download ficam desativados.
+- **Minutos** (0025 noturno, 0150 base extra 50%, 0200 hora extra 100%, 0240 base extras 65%, 0235 faltas/atrasos): `floor((centésimos × 60 + 50) / 100)`. Ex.: 55,73 h → 3344; 0,80 → 48; 0,18 → 11.
+- **Dias** (0260 faltas não justificadas, 8794 DSR): horas ÷ divisor, arredondado ao inteiro mais próximo. Valores a mais de 0,04 dia de um inteiro entram arredondados, em **amarelo** na conferência, com as horas originais e uma lista copiável no resumo. Valor não zero que arredonda para 0 é avisado (sumiria do arquivo).
 - Aritmética sempre inteira (centésimos), sem ponto flutuante.
-- **0240** não existe na planilha-modelo: a ferramenta cria a coluna na primeira posição livre (linha 10 vazia, 999 ou 9999 — hoje a coluna J), com nome na linha 9 e código na linha 10.
+- **0200 e 0240** existem na planilha de setembro; se faltarem em outra planilha, a ferramenta cria a coluna na primeira posição livre (linha 10 vazia, 999 ou 9999 — no modelo de agosto, a coluna J), com nome na linha 9 e código na linha 10.
 - **Eventos do relatório fora da tabela** aparecem como erro em destaque; nada some em silêncio.
 - **Casamento de nomes** (maiúsculas, sem acento, espaços colapsados): exato = automático; aproximado (prefixo, 2+ palavras, candidato único) = amarelo, com "confirmar" **desmarcado**; sem correspondência = fica de fora, com campo opcional de código folha (quem tem código entra: a linha é acrescentada à planilha antes dos totais) e lista copiável dos excluídos.
 - Competência da planilha diferente do mês do relatório = **aviso** (não bloqueia). O arquivo sai com a competência da planilha.

@@ -10,24 +10,36 @@
   const DIVISOR_FALTAS_CENT = 880;
   const DIVISOR_DSR_CENT = 733;
 
-  // Um valor "fecha dia inteiro" se estiver a até 0,03 dia de um número inteiro.
-  // Em centésimos de dia: 3.
-  const TOLERANCIA_DIA_CENT = 3;
+  // Um valor "fecha dia inteiro" se estiver a até 0,04 dia de um número inteiro.
+  // Em centésimos de dia: 4.
+  const TOLERANCIA_DIA_CENT = 4;
 
   // Mapeamento: evento do relatório do ponto -> evento da Domínio.
   // unidade: 'minutos' (horas decimais x 60) ou 'dias' (horas / divisor).
+  // O relatório pode vir em dois layouts de código (agosto e setembro); os dois são aceitos.
+  const GRUPOS_EVENTOS = {
+    ponto: 'Códigos do sistema de ponto (ex.: relatório de agosto)',
+    dominio: 'Códigos da própria Domínio, 5 dígitos (ex.: relatório de setembro)'
+  };
   const EVENTOS = [
-    { origem: '68001', nome: 'Horas Noturnas',          evento: '0025', unidade: 'minutos' },
-    { origem: '69050', nome: 'Base Extra 50%',          evento: '0150', unidade: 'minutos' },
-    { origem: '69065', nome: 'Base Extras 65%',         evento: '0240', unidade: 'minutos' },
-    { origem: '50101', nome: 'Faltas/Atrasos',          evento: '0235', unidade: 'minutos' },
-    { origem: '50001', nome: 'Faltas não Justificadas', evento: '0260', unidade: 'dias', divisor: 'FALTAS' },
-    { origem: '50201', nome: 'Repousos Desc. (DSR)',    evento: '8794', unidade: 'dias', divisor: 'DSR' }
+    { grupo: 'ponto', origem: '68001', nome: 'Horas Noturnas',          evento: '0025', unidade: 'minutos' },
+    { grupo: 'ponto', origem: '69050', nome: 'Base Extra 50%',          evento: '0150', unidade: 'minutos' },
+    { grupo: 'ponto', origem: '69065', nome: 'Base Extras 65%',         evento: '0240', unidade: 'minutos' },
+    { grupo: 'ponto', origem: '50101', nome: 'Faltas/Atrasos',          evento: '0235', unidade: 'minutos' },
+    { grupo: 'ponto', origem: '50001', nome: 'Faltas não Justificadas', evento: '0260', unidade: 'dias', divisor: 'FALTAS' },
+    { grupo: 'ponto', origem: '50201', nome: 'Repousos Desc. (DSR)',    evento: '8794', unidade: 'dias', divisor: 'DSR' },
+
+    { grupo: 'dominio', origem: '00025', nome: 'Adicional Notur',   evento: '0025', unidade: 'minutos' },
+    { grupo: 'dominio', origem: '00150', nome: 'HE 50%',            evento: '0150', unidade: 'minutos' },
+    { grupo: 'dominio', origem: '00200', nome: 'HE 100%',           evento: '0200', unidade: 'minutos' },
+    { grupo: 'dominio', origem: '00235', nome: 'Outras Faltas',     evento: '0235', unidade: 'minutos' },
+    { grupo: 'dominio', origem: '00240', nome: 'HE 65%',            evento: '0240', unidade: 'minutos' },
+    { grupo: 'dominio', origem: '00260', nome: 'Faltas Injustif',   evento: '0260', unidade: 'dias', divisor: 'FALTAS' },
+    { grupo: 'dominio', origem: '08794', nome: 'DSR Perdido',       evento: '8794', unidade: 'dias', divisor: 'DSR' }
   ];
 
   // Nome da coluna criada na planilha quando o evento não existe nela (linha 9).
-  const NOMES_COLUNA_NOVA = { '0240': 'Hora extra 65%' };
-
+  const NOMES_COLUNA_NOVA = { '0240': 'Hora extra 65%', '0200': 'Hora extra 100%' };
   // Folha do relatório -> tipo de cálculo da Domínio (coluna A da planilha).
   const TIPOS_CALCULO = [
     { re: /^MENSAL$/, tipo: 11 },
@@ -41,7 +53,7 @@
 
   const cfg = {
     DIVISOR_FALTAS_CENT, DIVISOR_DSR_CENT, TOLERANCIA_DIA_CENT,
-    EVENTOS, NOMES_COLUNA_NOVA, TIPOS_CALCULO, TIPOS_LIDOS,
+    EVENTOS, GRUPOS_EVENTOS, NOMES_COLUNA_NOVA, TIPOS_CALCULO, TIPOS_LIDOS,
     // regras do layout (.jar)
     PRIMEIRA_COLUNA_EVENTOS: 3,   // D
     MAX_COLUNAS_EVENTOS: 60,

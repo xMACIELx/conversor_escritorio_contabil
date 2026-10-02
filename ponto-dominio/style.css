@@ -82,3 +82,5 @@ textarea.copy { width: 100%; min-height: 110px; font: 12.5px/1.5 Consolas, "Cour
 .actions { margin: 26px 0 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
 .note { color: var(--muted); font-size: .92rem; }
 .options { margin: 8px 0; }
+tr.grupo td { background: #efe9d9; font-weight: 600; font-size: .85rem; color: var(--muted); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
