@@ -142,7 +142,7 @@
       }
       const tr = el('tr');
       tr.append(el('td', null, e.origem + ' ' + e.nome), el('td', null, e.evento),
-        el('td', null, e.unidade === 'minutos' ? 'minutos' : 'dias (horas ÷ divisor ' + e.divisor + ')'));
+        el('td', null, e.unidade === 'horas' ? 'horas e minutos (H,MM)' : 'dias (horas ÷ divisor ' + e.divisor + ')'));
       t.append(tr);
     });
   }
@@ -191,6 +191,12 @@
     });
   }
 
+  // Coluna de conferência: horas mostram o valor H,MM da célula e o H:MM legível; dias mostram o número de dias
+  function valorLegivel(l) {
+    if (l.cent === undefined) return '—';
+    return l.unidade === 'horas' ? Core.fmtCent(l.cent) + ' (' + Core.fmtHHMM(l.minutos) + ' h)' : l.dias + ' dia(s)';
+  }
+
   const STATUS = {
     ok: 'OK', naofecha: 'Não fecha dia inteiro — confira', zerou: 'Arredonda para 0 — não entra no arquivo',
     naomapeado: 'Evento sem mapeamento — não entra', pulado: 'Colaborador fora do arquivo', aguardando: 'Aguardando confirmação'
@@ -230,7 +236,7 @@
 
     // não fecham
     const nf = r.plano.naoFecham.concat(r.plano.zerados.filter(z => r.plano.naoFecham.indexOf(z) < 0)).map(l =>
-      l.nome + ' — ' + l.origem + ' ' + l.descricao + ': ' + Core.fmtCent(l.horas) + ' h = ' + Core.fmtCent(l.centDias) + ' dias → entra ' + l.valor + ' dia(s)');
+      l.nome + ' — ' + l.origem + ' ' + l.descricao + ': ' + Core.fmtCent(l.horas) + ' h = ' + Core.fmtCent(l.centDias) + ' dias → entra ' + l.dias + ' dia(s)');
     $('box-fecham').hidden = !nf.length; $('txt-fecham').value = nf.join('\n');
 
     // tabela
@@ -244,8 +250,8 @@
       const tr = el('tr', 's-' + l.status);
       tr.append(el('td', null, l.nome), el('td', null, l.origem + ' ' + l.descricao + (l.evento ? ' → ' + l.evento : '')),
         el('td', 'num', Core.fmtCent(l.horas) + ' h'),
-        el('td', 'num', l.valor === undefined ? '—' : String(l.valor)),
-        el('td', null, l.unidade || '—'),
+        el('td', 'num', valorLegivel(l)),
+        el('td', null, l.unidade === 'horas' ? 'horas (H,MM)' : (l.unidade || '—')),
         el('td', l.status === 'ok' ? 'st-ok' : null, STATUS[l.status]));
       t.append(tr);
     });

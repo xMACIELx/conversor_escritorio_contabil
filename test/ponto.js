@@ -22,6 +22,29 @@ module.exports = async function run(check) {
   check('0,18 h -> 11 min', min('0,18') === 11);
   check('0,02 h -> 1 min', min('0,02') === 1);
   check('0,03 h -> 2 min', min('0,03') === 2);
+
+  console.log('\nPonto -> Folha Domínio: horas e minutos (H,MM)');
+  const hm = s => Core.horasMinutosCent(min(s));
+  const val9 = c => String(c).padStart(9, '0');
+  check('0,27 h -> 16 min -> 0,16 (000000016)', hm('0,27') === 16 && val9(hm('0,27')) === '000000016');
+  check('2,40 h -> 144 min -> 2,24 (000000224)', hm('2,40') === 224 && val9(hm('2,40')) === '000000224');
+  check('70,23 h -> 4214 min -> 70,14 (000007014)', min('70,23') === 4214 && hm('70,23') === 7014 && val9(hm('70,23')) === '000007014');
+  check('55,73 h -> 3344 min -> 55,44 (000005544)', hm('55,73') === 5544 && val9(hm('55,73')) === '000005544');
+  check('1,00 h -> 1,00 (000000100)', hm('1,00') === 100 && val9(hm('1,00')) === '000000100');
+  check('0,60 h -> 36 min -> 0,36 (000000036)', hm('0,60') === 36 && val9(hm('0,60')) === '000000036');
+  check('6.654,13 h -> 399248 min -> 6654,08 (milhar não atrapalha)', min('6.654,13') === 399248 && hm('6.654,13') === 665408);
+  check('fmtHHMM: 144 -> 2:24, 16 -> 0:16, 4214 -> 70:14', Core.fmtHHMM(144) === '2:24' && Core.fmtHHMM(16) === '0:16' && Core.fmtHHMM(4214) === '70:14');
+  check('texto exibido H,MM: 224 -> "2,24"; 7014 -> "70,14"; 100 -> "1,00"', Core.fmtCent(224) === '2,24' && Core.fmtCent(7014) === '70,14' && Core.fmtCent(100) === '1,00');
+  check('plano: 00235 com 2,40 h -> célula 2,24 (cent 224, 144 min, sem dias)', (() => {
+    const rep1 = { colaboradores: [{ nome: 'J', eventos: [{ codigo: '00235', descricao: 'Outras Faltas', centesimos: 240 }] }] };
+    const it = Core.construirPlano(rep1, [{ tipo: 'exato', row: 11 }], { FALTAS: 880, DSR: 733 }).itens[0];
+    return it && it.cent === 224 && it.minutos === 144 && it.dias === null;
+  })());
+  check('eventos em dias não mudam: 8,80 h -> 1 dia -> célula 1,00 (cent 100)', (() => {
+    const rep1 = { colaboradores: [{ nome: 'J', eventos: [{ codigo: '00260', descricao: 'Faltas', centesimos: 880 }] }] };
+    const it = Core.construirPlano(rep1, [{ tipo: 'exato', row: 11 }], { FALTAS: 880, DSR: 733 }).itens[0];
+    return it && it.cent === 100 && it.dias === 1 && it.minutos === null;
+  })());
   check('55,73 h -> 3344 min', min('55,73') === 3344);
   check('milhar com ponto: 6.654,13 -> 665413 centésimos', Pdf.parseCentesimos('6.654,13') === 665413);
   check('divisor de faltas = 8,80 h e DSR = 7,33 h (ambos confirmados)', DIV.FALTAS === 880 && DIV.DSR === 733);
@@ -53,8 +76,8 @@ module.exports = async function run(check) {
   };
   check('mapeamento: 6 códigos de agosto + 7 de setembro, sem repetir origem', CFG.EVENTOS.length === 13 && mapa.size === 13);
   check('mapeamento: cada código vira o evento da Domínio esperado', Object.keys(esperadoMapa).every(k => mapa.get(k) && mapa.get(k).evento === esperadoMapa[k]));
-  check('mapeamento: minutos (0025, 0150, 0200, 0235, 0240) e dias (0260 faltas, 8794 DSR)',
-    ['00025', '00150', '00200', '00235', '00240'].every(k => mapa.get(k).unidade === 'minutos') &&
+  check('mapeamento: horas H,MM (0025, 0150, 0200, 0235, 0240) e dias (0260 faltas, 8794 DSR)',
+    ['00025', '00150', '00200', '00235', '00240'].every(k => mapa.get(k).unidade === 'horas') &&
     mapa.get('00260').unidade === 'dias' && mapa.get('00260').divisor === 'FALTAS' &&
     mapa.get('08794').unidade === 'dias' && mapa.get('08794').divisor === 'DSR');
   check('mapeamento: os dois grupos têm título para a tela', CFG.EVENTOS.every(e => CFG.GRUPOS_EVENTOS[e.grupo]));
@@ -186,14 +209,14 @@ module.exports = async function run(check) {
   check('todas as linhas do .txt têm 43 caracteres', r0.txt.linhas.every(l => l.length === 43));
   check('coluna do 0240 criada na primeira posição livre (J)', r0.ap.criadas.length === 1 && r0.ap.criadas[0].evento === '0240' && r0.ap.criadas[0].coluna === 'J', JSON.stringify(r0.ap.criadas));
   const l1 = r0.txt.linhas.find(l => l.substr(2, 10) === '0000000941' && l.substr(18, 4) === '0025');
-  check('Adelson da Costa 55,73 h -> 3344 min -> "000334400" no .txt', l1 === '1000000009412026090025110003344000000000316', l1);
+  check('Adelson da Costa 55,73 h -> 3344 min -> 55,44 (55h44) -> "000005544" no .txt', l1 === '1000000009412026090025110000055440000000316', l1);
   check('competência da planilha preservada (202609, não a do relatório)', r0.txt.linhas.every(l => l.substr(12, 6) === '202609'));
   check('soma por evento do .txt = soma convertida do relatório (só incluídos)', (() => {
     const esp = {};
     rep.colaboradores.forEach((c, i) => { if (!incl.has(i)) return; Core.agregarEventos(c).forEach(a => {
       const mp = CFG.EVENTOS.find(e => e.origem === a.codigo);
-      const v = mp.unidade === 'minutos' ? Core.minutosDeCentesimos(a.centesimos) : Core.diasDeCentesimos(a.centesimos, DIV[mp.divisor]).dias;
-      esp[mp.evento] = (esp[mp.evento] || 0) + v * 100;
+      const v = mp.unidade === 'horas' ? Core.horasMinutosCent(Core.minutosDeCentesimos(a.centesimos)) : Core.diasDeCentesimos(a.centesimos, DIV[mp.divisor]).dias * 100;
+      esp[mp.evento] = (esp[mp.evento] || 0) + v;
     }); });
     const got = {}; r0.txt.linhas.forEach(l => { got[l.substr(18, 4)] = (got[l.substr(18, 4)] || 0) + parseInt(l.substr(24, 9), 10); });
     return JSON.stringify(Object.keys(esp).sort().map(k => [k, esp[k]])) === JSON.stringify(Object.keys(got).sort().map(k => [k, got[k]]));
@@ -204,10 +227,10 @@ module.exports = async function run(check) {
   check('validação: tipo de cálculo Mensal = 11 confere', nivel('Tipo de cálculo') === 'ok');
   check('validação: soma por evento e contagem de linhas ok', nivel('Soma por evento') === 'ok' && nivel('Contagem de linhas') === 'ok');
   check('validação: sem nenhum erro nas amostras', !r0.val.some(v => v.nivel === 'erro'), JSON.stringify(r0.val.filter(v => v.nivel === 'erro')));
-  check('dias que não fecham são sinalizados e entram arredondados', r0.plano.naoFecham.length > 0 && r0.plano.naoFecham.every(x => !x.fecha && x.valor >= 0));
+  check('dias que não fecham são sinalizados e entram arredondados', r0.plano.naoFecham.length > 0 && r0.plano.naoFecham.every(x => !x.fecha && x.cent >= 0));
   const raf = r0.plano.conferencia.find(l => l.nome === 'Rafaela Amanda Stevens Dutra' && l.origem === '50201');
   check('Rafaela Amanda Stevens Dutra (50201: 6,67 h = 0,91 dia) aparece em amarelo, entra 1 dia',
-    raf && raf.horas === 667 && raf.status === 'naofecha' && raf.valor === 1 && r0.plano.naoFecham.includes(raf), JSON.stringify(raf));
+    raf && raf.horas === 667 && raf.status === 'naofecha' && raf.dias === 1 && raf.cent === 100 && r0.plano.naoFecham.includes(raf), JSON.stringify(raf));
   const semAviso = r0.plano.conferencia.filter(l => l.origem === '50001' && (l.horas === 873 || l.horas === 1747));
   check('faltas de 8,73 h e 17,47 h seguem sem aviso (' + semAviso.length + ' na amostra)', semAviso.length > 0 && semAviso.every(l => l.fecha && l.status !== 'naofecha'), JSON.stringify(semAviso.map(l => l.nome + l.status)));
 

@@ -25,6 +25,11 @@
   }
   function fmtValorCelula(n) { return fmtCent(n * 100); } // 48 -> "48,00" (como o Excel mostra #,##0.00)
 
+  // Eventos em "Horas" da Domínio: o valor é H,MM (2,24 = 2h24), não horas decimais nem minutos totais.
+  // minutos totais -> centésimos do número H,MM (inteiro): 144 -> 224; 4214 -> 7014
+  function horasMinutosCent(totalMin) { return Math.floor(totalMin / 60) * 100 + (totalMin % 60); }
+  function fmtHHMM(totalMin) { return Math.floor(totalMin / 60) + ':' + String(totalMin % 60).padStart(2, '0'); }
+
   // ---------- nomes ----------
   function normalizeName(s) {
     return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/\s+/g, ' ').trim();
@@ -183,13 +188,16 @@
           conferencia.push(Object.assign(base, { status: 'naomapeado' }));
           return;
         }
-        let n, fecha = true, zerou = false, centDias = null;
-        if (map.unidade === 'minutos') n = minutosDeCentesimos(a.centesimos);
-        else {
+        // cent = valor da célula em centésimos inteiros (célula = cent / 100, formato #,##0.00)
+        let cent, minutos = null, dias = null, fecha = true, zerou = false, centDias = null;
+        if (map.unidade === 'horas') {          // horas + minutos: 144 min -> 2,24 (2h24)
+          minutos = minutosDeCentesimos(a.centesimos);
+          cent = horasMinutosCent(minutos);
+        } else {
           const r = diasDeCentesimos(a.centesimos, divisores[map.divisor]);
-          n = r.dias; fecha = r.fecha; zerou = r.zerou; centDias = r.centDias;
+          dias = r.dias; cent = dias * 100; fecha = r.fecha; zerou = r.zerou; centDias = r.centDias;
         }
-        const linha = Object.assign(base, { evento: map.evento, unidade: map.unidade, valor: n, fecha, zerou, centDias });
+        const linha = Object.assign(base, { evento: map.evento, unidade: map.unidade, cent, minutos, dias, fecha, zerou, centDias });
         if (!inc) linha.status = d && d.tipo === 'aprox' ? 'aguardando' : 'pulado';
         else linha.status = zerou ? 'zerou' : (fecha ? 'ok' : 'naofecha');
         conferencia.push(linha);
@@ -199,15 +207,16 @@
         vistos.add(chave);
         if (!fecha) naoFecham.push(linha);
         if (zerou) zerados.push(linha);
-        if (n > 0) itens.push(linha);
+        if (cent > 0) itens.push(linha);
       });
     });
     return { itens, naoMapeados, naoFecham, zerados, conferencia, duplicados };
   }
 
   // ---------- aplicar na planilha ----------
-  function setNum(XLSX, ws, r, c, n) {
-    ws[XLSX.utils.encode_cell({ r, c })] = { t: 'n', v: n, z: CFG.FORMATO_VALOR, w: fmtValorCelula(n) };
+  function setNum(XLSX, ws, r, c, cent) {
+    // v = cent / 100 (um único número decimal montado de inteiros); w = texto exibido, que o .jar lê
+    ws[XLSX.utils.encode_cell({ r, c })] = { t: 'n', v: cent / 100, z: CFG.FORMATO_VALOR, w: fmtCent(cent) };
   }
 
   // Garante uma coluna para cada evento necessário. Retorna { mapa: codigo -> coluna, criadas }.
@@ -310,7 +319,7 @@
     plano.itens.forEach(it => {
       it.row = rowDe.get(it.colab);
       it.col = mapa.get(it.evento);
-      setNum(XLSX, ws, it.row - 1, it.col, it.valor);
+      setNum(XLSX, ws, it.row - 1, it.col, it.cent);
     });
     recalcularTotais(XLSX, ws);
     return { grade: lerGrade(XLSX, ws), criadas, linhasNovas: novasLinhas };
@@ -369,7 +378,7 @@
     // .txt x plano
     const somaTxt = {}, somaPlano = {};
     txt.linhas.forEach(l => { const ev = l.substr(18, 4); somaTxt[ev] = (somaTxt[ev] || 0) + parseInt(l.substr(24, 9), 10); });
-    plano.itens.forEach(i => { somaPlano[i.evento] = (somaPlano[i.evento] || 0) + i.valor * 100; });
+    plano.itens.forEach(i => { somaPlano[i.evento] = (somaPlano[i.evento] || 0) + i.cent; });
     const evs = Array.from(new Set(Object.keys(somaTxt).concat(Object.keys(somaPlano)))).sort();
     const difEv = evs.filter(k => (somaTxt[k] || 0) !== (somaPlano[k] || 0));
     if (txt.linhas.length === 0) add('erro', 'Nenhum lançamento gerado', 'O arquivo .txt ficou vazio: nenhum evento do relatório virou lançamento (veja os avisos acima e a tabela de conferência). Não há o que baixar.');
@@ -400,7 +409,7 @@
   }
 
   const api = {
-    validar, minutosDeCentesimos, diasDeCentesimos, fmtCent, fmtValorCelula, normalizeName, casarColaboradores,
+    validar, minutosDeCentesimos, horasMinutosCent, fmtHHMM, diasDeCentesimos, fmtCent, fmtValorCelula, normalizeName, casarColaboradores,
     tipoDeFolha, lerGrade, gerarTxt, txtComoTexto, agregarEventos, incluido, construirPlano,
     aplicarNaPlanilha, digitos, textoCelula, lerCompetencia, TXT_EOL
   };

@@ -113,7 +113,7 @@ ponto-dominio/
 
 - **Faltas (0260):** 1 dia = 8,80 h (jornada de 44 h semanais, seg a sex). Faltas abaixo de meio dia (que arredondam para 0 dia) são lançadas **à mão** na Domínio. Meio dia (0,5) não é aceito, porque não calcula certo.
 - **DSR (8794):** 1 dia = 7,33 h (220 h / 30). Valores que não fecham (ex.: 6,67 h) entram como o dia mais próximo.
-- **Faltas/atrasos (0235) e adicional noturno (0025):** em minutos.
+- **Faltas/atrasos (0235) e adicional noturno (0025):** calculados em minutos e lançados como horas e minutos (H,MM; ver "Regras"). *Atualizado em 02/10/2026: a rubrica é em "Horas" na Domínio, então o valor sai como `2,24` (2h24), e não como minutos totais.*
 - **Hora extra 65% = rubrica 0240.** Base Extra é o que vai para a folha.
 - **Colaboradores sem correspondência:** ficam fora do arquivo, com opção de digitar o código folha.
 
@@ -122,7 +122,21 @@ ponto-dominio/
 - **Planilha = fonte de verdade** para empresa (C3), competência (C6), tipo de cálculo (coluna A), código folha (B) e nomes (C). O "contrato" do relatório não é o código folha.
 - **Dois layouts de código no relatório** (os dois são aceitos e aparecem na tabela de regras da tela): códigos do sistema de ponto (agosto: 68001, 69050, 69065, 50101, 50001, 50201) e códigos da própria Domínio com 5 dígitos (setembro: 00025 Adicional Notur, 00150 HE 50%, 00200 HE 100%, 00235 Outras Faltas, 00240 HE 65%, 00260 Faltas Injustif, 08794 DSR Perdido). Um código que não esteja em nenhum dos dois grupos é mostrado em vermelho (Avise o desenvolvedor com estes códigos).
 - **Sem lançamentos:** se nenhum evento virar linha no .txt, o resumo mostra em vermelho Nenhum lançamento gerado e os botões de download ficam desativados.
-- **Minutos** (0025 noturno, 0150 base extra 50%, 0200 hora extra 100%, 0240 base extras 65%, 0235 faltas/atrasos): `floor((centésimos × 60 + 50) / 100)`. Ex.: 55,73 h → 3344; 0,80 → 48; 0,18 → 11.
+- **Horas e minutos, formato H,MM** (0025 noturno, 0150 base extra 50%, 0200 hora extra 100%, 0240 base extras 65%, 0235 faltas/atrasos). A rubrica da Domínio é em "Horas": o valor da célula **não** é hora decimal nem minutos totais, e sim `H,MM`, em que **2,24 significa 2h24** (a Domínio mostra 144,00 como 144:00 e 16,00 como 016:00). Cálculo, só com inteiros:
+  1. minutos totais = `floor((centésimos × 60 + 50) / 100)`;
+  2. `H = floor(minutos / 60)`, `M = minutos % 60`;
+  3. valor da célula = `H + M/100`, montado de inteiros (`H × 100 + M` centésimos), com formato `#,##0.00`. O texto exibido é `H,MM`; o `.jar` tira os não-dígitos e completa para 9 posições.
+
+  | Horas do relatório | Minutos | Célula (H,MM) | Valor no `.txt` |
+  |---|---|---|---|
+  | 0,27 | 16 | 0,16 | `000000016` |
+  | 2,40 | 144 | 2,24 | `000000224` |
+  | 0,60 | 36 | 0,36 | `000000036` |
+  | 1,00 | 60 | 1,00 | `000000100` |
+  | 55,73 | 3344 | 55,44 | `000005544` |
+  | 70,23 | 4214 | 70,14 | `000007014` |
+
+  Na tabela de conferência da tela, esses eventos mostram o valor da célula e o horário legível (ex.: `2,24 (2:24 h)`).
 - **Dias** (0260 faltas não justificadas, 8794 DSR): horas ÷ divisor, arredondado ao inteiro mais próximo. Valores a mais de 0,04 dia de um inteiro entram arredondados, em **amarelo** na conferência, com as horas originais e uma lista copiável no resumo. Valor não zero que arredonda para 0 é avisado (sumiria do arquivo).
 - Aritmética sempre inteira (centésimos), sem ponto flutuante.
 - **0200 e 0240** existem na planilha de setembro; se faltarem em outra planilha, a ferramenta cria a coluna na primeira posição livre (linha 10 vazia, 999 ou 9999 — no modelo de agosto, a coluna J), com nome na linha 9 e código na linha 10.

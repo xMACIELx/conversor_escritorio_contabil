@@ -66,10 +66,15 @@ module.exports = async function run(check) {
   check('193 colaboradores incluídos', dec.filter(Core.incluido).length === 193);
   check('nenhum evento sem mapeamento e nenhuma coluna criada na planilha', plano.naoMapeados.length === 0 && ap.criadas.length === 0);
   check('302 linhas no .txt, todas com 43 caracteres', txt.linhas.length === 302 && txt.linhas.every(l => l.length === 43), String(txt.linhas.length));
-  check('Adelson da Costa: 00025 70,23 h -> 4214 min -> linha 1000000009412026090025110004214000000000316',
-    txt.linhas.includes('1000000009412026090025110004214000000000316'));
+  check('Adelson da Costa: 00025 70,23 h -> 4214 min -> 70,14 -> linha 1000000009412026090025110000070140000000316',
+    txt.linhas.includes('1000000009412026090025110000070140000000316'));
+  const jalmir = id => txt.linhas.find(l => l.substr(2, 10) === '0000000003' && l.substr(18, 4) === id);
+  check('Jalmir Mollmann (código folha 3): 0150 0,27 h -> 16 min -> 0,16 -> linha 1000000000032026090150110000000160000000316',
+    jalmir('0150') === '1000000000032026090150110000000160000000316', jalmir('0150'));
+  check('Jalmir Mollmann (código folha 3): 0235 2,40 h -> 144 min -> 2,24 -> linha 1000000000032026090235110000002240000000316',
+    jalmir('0235') === '1000000000032026090235110000002240000000316', jalmir('0235'));
   const adel = plano.itens.find(i => i.nome === 'Adelson da Costa' && i.origem === '00025');
-  check('Adelson da Costa: 7.023 centésimos -> 4214 minutos', adel && adel.horas === 7023 && adel.valor === 4214, JSON.stringify(adel));
+  check('Adelson da Costa: 7.023 centésimos -> 4214 minutos -> célula 70,14', adel && adel.horas === 7023 && adel.minutos === 4214 && adel.cent === 7014, JSON.stringify(adel));
   check('competência do arquivo = 202609', txt.linhas.every(l => l.substr(12, 6) === '202609'));
 
   const zer = plano.zerados.map(z => z.nome + '|' + z.origem + '|' + Core.fmtCent(z.horas)).sort();
@@ -85,7 +90,7 @@ module.exports = async function run(check) {
 
   ['Elizabete Vargas de Melo', 'Maria Raquel Rosa Maciel'].forEach(nome => {
     const l = plano.conferencia.find(x => x.nome === nome && x.origem === '00260');
-    check(nome + ': 00260 34,93 h = 4 dias, sem aviso', l && l.horas === 3493 && l.valor === 4 && l.fecha && l.status === 'ok', JSON.stringify(l));
+    check(nome + ': 00260 34,93 h = 4 dias, sem aviso', l && l.horas === 3493 && l.dias === 4 && l.cent === 400 && l.fecha && l.status === 'ok', JSON.stringify(l));
   });
   check('nada mais fica em amarelo além dos 5 zerados (tolerância 0,04)', plano.naoFecham.every(x => plano.zerados.includes(x)), JSON.stringify(plano.naoFecham.map(x => [x.nome, x.origem, x.horas])));
 

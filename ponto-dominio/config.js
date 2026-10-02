@@ -15,25 +15,26 @@
   const TOLERANCIA_DIA_CENT = 4;
 
   // Mapeamento: evento do relatório do ponto -> evento da Domínio.
-  // unidade: 'minutos' (horas decimais x 60) ou 'dias' (horas / divisor).
+  // unidade: 'horas' (rubrica em Horas da Domínio: horas decimais -> minutos -> valor H,MM, ex.: 2,40 h = 144 min = 2,24)
+  //          ou 'dias' (horas / divisor).
   // O relatório pode vir em dois layouts de código (agosto e setembro); os dois são aceitos.
   const GRUPOS_EVENTOS = {
     ponto: 'Códigos do sistema de ponto (ex.: relatório de agosto)',
     dominio: 'Códigos da própria Domínio, 5 dígitos (ex.: relatório de setembro)'
   };
   const EVENTOS = [
-    { grupo: 'ponto', origem: '68001', nome: 'Horas Noturnas',          evento: '0025', unidade: 'minutos' },
-    { grupo: 'ponto', origem: '69050', nome: 'Base Extra 50%',          evento: '0150', unidade: 'minutos' },
-    { grupo: 'ponto', origem: '69065', nome: 'Base Extras 65%',         evento: '0240', unidade: 'minutos' },
-    { grupo: 'ponto', origem: '50101', nome: 'Faltas/Atrasos',          evento: '0235', unidade: 'minutos' },
+    { grupo: 'ponto', origem: '68001', nome: 'Horas Noturnas',          evento: '0025', unidade: 'horas' },
+    { grupo: 'ponto', origem: '69050', nome: 'Base Extra 50%',          evento: '0150', unidade: 'horas' },
+    { grupo: 'ponto', origem: '69065', nome: 'Base Extras 65%',         evento: '0240', unidade: 'horas' },
+    { grupo: 'ponto', origem: '50101', nome: 'Faltas/Atrasos',          evento: '0235', unidade: 'horas' },
     { grupo: 'ponto', origem: '50001', nome: 'Faltas não Justificadas', evento: '0260', unidade: 'dias', divisor: 'FALTAS' },
     { grupo: 'ponto', origem: '50201', nome: 'Repousos Desc. (DSR)',    evento: '8794', unidade: 'dias', divisor: 'DSR' },
 
-    { grupo: 'dominio', origem: '00025', nome: 'Adicional Notur',   evento: '0025', unidade: 'minutos' },
-    { grupo: 'dominio', origem: '00150', nome: 'HE 50%',            evento: '0150', unidade: 'minutos' },
-    { grupo: 'dominio', origem: '00200', nome: 'HE 100%',           evento: '0200', unidade: 'minutos' },
-    { grupo: 'dominio', origem: '00235', nome: 'Outras Faltas',     evento: '0235', unidade: 'minutos' },
-    { grupo: 'dominio', origem: '00240', nome: 'HE 65%',            evento: '0240', unidade: 'minutos' },
+    { grupo: 'dominio', origem: '00025', nome: 'Adicional Notur',   evento: '0025', unidade: 'horas' },
+    { grupo: 'dominio', origem: '00150', nome: 'HE 50%',            evento: '0150', unidade: 'horas' },
+    { grupo: 'dominio', origem: '00200', nome: 'HE 100%',           evento: '0200', unidade: 'horas' },
+    { grupo: 'dominio', origem: '00235', nome: 'Outras Faltas',     evento: '0235', unidade: 'horas' },
+    { grupo: 'dominio', origem: '00240', nome: 'HE 65%',            evento: '0240', unidade: 'horas' },
     { grupo: 'dominio', origem: '00260', nome: 'Faltas Injustif',   evento: '0260', unidade: 'dias', divisor: 'FALTAS' },
     { grupo: 'dominio', origem: '08794', nome: 'DSR Perdido',       evento: '8794', unidade: 'dias', divisor: 'DSR' }
   ];
