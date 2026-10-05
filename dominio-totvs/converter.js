@@ -3,8 +3,14 @@
  * Funciona no navegador (window.Conversor) e em Node (module.exports).
  *
  * Layout da linha de entrada (posições 1-based, contando a partir do "0001"):
- *   1-4 sequência | 5-9 "GERAL" | 11-18 data DDMMAAAA | 19-20 tipo (AA)
- *   21-27 conta   | 28-38 CCUSTO | ... histórico ...   | últimos 8 = valor
+ *   1-4 sequência | 5-9 "GERAL" | 11-18 data DDMMAAAA | 19-20 tipo
+ *   21-27 conta   | 28-38 CCUSTO | ... histórico ...   | últimas 8 posições = valor
+ *
+ * Dois layouts de entrada:
+ *   - Domínio atual (principal): tipo já vem "CR" ou "DB"; valor com centavos sem zeros à
+ *     esquerda, alinhado à esquerda, completado com espaços (ex.: "18911   " = 189,11).
+ *   - Layout antigo: tipo "AA" (db na 1ª linha do par, cr na 2ª); valor com 8 dígitos.
+ * A saída é a mesma nos dois: tipo "db"/"cr" e valor "000189,11".
  */
 (function (root) {
   'use strict';
@@ -73,20 +79,55 @@
     return digits.slice(0, -2) + ',' + digits.slice(-2);
   }
 
+  function lineTypeField(line) {
+    return line.substr(TYPE_AT, 2);
+  }
+
+  // Dígitos do valor (sempre 8, com zeros à esquerda) lidos das 8 últimas posições,
+  // ou null se a linha não terminar em número (com ou sem zeros à esquerda / espaços à direita).
+  function valueDigits(line) {
+    if (line.length < HISTORY_AT + VALUE_DIGITS) return null;
+    const m = /^(\d+) *$/.exec(line.slice(-VALUE_DIGITS));
+    return m ? m[1].padStart(VALUE_DIGITS, '0') : null;
+  }
+
+  // 'atual' (CR/DB), 'antigo' (AA), 'misto' ou 'desconhecido' (nenhuma linha com AA/CR/DB).
+  function detectLayout(lines) {
+    let aa = 0, crdb = 0;
+    lines.forEach(l => {
+      const t = lineTypeField(l);
+      if (t === 'AA') aa++; else if (t === 'CR' || t === 'DB') crdb++;
+    });
+    if (aa && crdb) return 'misto';
+    if (crdb) return 'atual';
+    if (aa) return 'antigo';
+    return 'desconhecido';
+  }
+
+  const LAYOUT_LABELS = {
+    atual: 'Domínio atual (CR/DB)',
+    antigo: 'Layout antigo (AA)',
+    misto: 'Misto (AA e CR/DB no mesmo arquivo)',
+    desconhecido: 'Não reconhecido'
+  };
+
   // lineNo é 1-based (posição da linha no arquivo).
   function convertLine(line, lineNo, options) {
     const opts = options || {};
     const other = FIRST_LINE_TYPE === 'db' ? 'cr' : 'db';
-    const type = lineNo % 2 === 1 ? FIRST_LINE_TYPE : other;
+    const own = lineTypeField(line);
+    // CR/DB: usa o que veio. AA (ou qualquer outro): alterna pela posição da linha.
+    const type = own === 'CR' || own === 'DB' ? own.toLowerCase()
+      : (lineNo % 2 === 1 ? FIRST_LINE_TYPE : other);
     let s = line;
     const info = { type, validValue: false, ccustoChanged: false };
 
     if (s.length >= TYPE_AT + 2) s = s.slice(0, TYPE_AT) + type + s.slice(TYPE_AT + 2);
 
-    const m = /(\d{8})$/.exec(s);
-    if (m && s.length >= HISTORY_AT + VALUE_DIGITS) {
+    const digits = valueDigits(s);
+    if (digits !== null) {
       info.validValue = true;
-      s = s.slice(0, s.length - VALUE_DIGITS) + formatValue(m[1]);
+      s = s.slice(0, s.length - VALUE_DIGITS) + formatValue(digits);
     }
 
     if (opts.mapCcusto !== false) {
@@ -102,14 +143,14 @@
   }
 
   function parseFields(line) {
-    const m = /(\d{8})$/.exec(line);
-    const history = line.slice(HISTORY_AT, m ? line.length - VALUE_DIGITS : line.length);
+    const digits = valueDigits(line);
+    const history = line.slice(HISTORY_AT, digits !== null ? line.length - VALUE_DIGITS : line.length);
     const date = line.substr(DATE_AT, DATE_LEN);
     const comp = /(\d{2})\/(\d{4})/.exec(history);
     return {
       date,
       ccusto: line.substr(CCUSTO_AT, CCUSTO_LEN),
-      cents: m ? parseInt(m[1], 10) : null,
+      cents: digits !== null ? parseInt(digits, 10) : null,
       competencia: comp ? comp[1] + '/' + comp[2] : date.slice(2, 4) + '/' + date.slice(4, 8),
       competenciaFromHistory: !!comp
     };
@@ -180,13 +221,30 @@
 
     const badValue = [];
     inText.forEach((l, i) => { if (!infos[i].validValue) badValue.push(i + 1); });
-    add('valor8', 'Todas as linhas terminam com valor de 8 dígitos', badValue.length === 0,
+    add('valor8', 'Valor numérico nas 8 últimas posições (com ou sem zeros à esquerda)', badValue.length === 0,
       badValue.length ? 'Linhas com problema: ' + listNumbers(badValue) : lines.length + ' linhas conferidas', badValue);
 
+    const layout = detectLayout(inText);
     const badType = [];
-    inText.forEach((l, i) => { if (l.substr(TYPE_AT, 2) !== 'AA') badType.push(i + 1); });
-    add('tipo', 'Campo de tipo veio como "AA" em todas as linhas', badType.length === 0,
-      badType.length ? 'Linhas com outro conteúdo nas posições 19-20: ' + listNumbers(badType) : 'Layout da Domínio como esperado', badType);
+    inText.forEach((l, i) => {
+      const t = lineTypeField(l);
+      if (t !== 'AA' && t !== 'CR' && t !== 'DB') badType.push(i + 1);
+    });
+    const tipoOk = badType.length === 0 && layout !== 'misto';
+    add('tipo', 'Campo de tipo (posições 19-20) é "AA" ou "CR"/"DB", sem misturar os dois', tipoOk,
+      layout === 'misto' ? 'O arquivo mistura linhas com AA e com CR/DB'
+        : badType.length ? 'Linhas com outro conteúdo nas posições 19-20: ' + listNumbers(badType)
+          : 'Layout detectado: ' + LAYOUT_LABELS[layout], badType);
+
+    if (layout === 'atual') {
+      const badCrDb = [];
+      for (let i = 0; i + 1 < lines.length; i += 2) {
+        const a = lineTypeField(inText[i]), b = lineTypeField(inText[i + 1]);
+        if (!((a === 'CR' && b === 'DB') || (a === 'DB' && b === 'CR'))) badCrDb.push((i + 1) + '-' + (i + 2));
+      }
+      add('par_crdb', 'Cada par tem exatamente um CR e um DB', badCrDb.length === 0,
+        badCrDb.length ? 'Pares (linhas) com problema: ' + listNumbers(badCrDb) : Math.floor(lines.length / 2) + ' pares conferidos', badCrDb);
+    }
 
     const pairIssues = { data: [], ccusto: [], valor: [] };
     for (let i = 0; i + 1 < lines.length; i += 2) {
@@ -240,6 +298,8 @@
       outputText,
       inputLines: inText,
       outputLines: outLines,
+      layout,
+      layoutLabel: LAYOUT_LABELS[layout],
       readCount: lines.length,
       writtenCount: outCount,
       ccustoChanged: infos.filter(i => i.ccustoChanged).length,
@@ -255,7 +315,7 @@
 
   const api = {
     FIRST_LINE_TYPE, CCUSTO_MAP, ORDINAL_REPLACEMENT,
-    decodeBuffer, splitLines, removeAccents, formatValue, convertLine, convertText,
+    decodeBuffer, splitLines, removeAccents, formatValue, convertLine, convertText, detectLayout, LAYOUT_LABELS,
     encodeWindows1252, unencodableChars, centsToBRL
   };
 

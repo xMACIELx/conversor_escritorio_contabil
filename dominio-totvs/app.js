@@ -46,6 +46,12 @@
       li.append(body);
       list.append(li);
     });
+    const lay = el('li', 'info');
+    lay.append(el('span', 'mark', 'i'));
+    const lb = el('div');
+    lb.append(el('strong', null, 'Layout detectado: ' + res.layoutLabel));
+    lay.append(lb);
+    list.append(lay);
     const extra = el('li', 'info');
     extra.append(el('span', 'mark', 'i'));
     const eb = el('div');

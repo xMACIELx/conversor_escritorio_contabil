@@ -79,15 +79,30 @@ Abra o arquivo `index.html` da raiz diretamente no navegador (não requer servid
 
 Converte o arquivo de lançamentos contábeis exportado pela Domínio para o layout aceito pela TOTVS.
 
-| Regra | Antes | Depois |
-|---|---|---|
-| Posições 19-20 | `AA` | `db` (linha ímpar) / `cr` (linha par) |
-| Valor (últimos 8 dígitos) | `00099385` | `000993,85` |
-| Acentos no histórico (opcional) | `MÊS`, `FÉRIAS` | `MES`, `FERIAS` |
-| `CCUSTO00001` (opcional) | `CCUSTO00001` | `CCUSTO01100` |
+O conversor aceita **dois layouts** de entrada e detecta qual é pelo campo de tipo (posições 19-20). A tela mostra no resumo `Layout detectado: Domínio atual (CR/DB)` ou `Layout antigo (AA)`.
+
+**Layout principal: Domínio atual (CR/DB)** — o exportado hoje pela Domínio.
+- Posições 19-20 já vêm `CR` ou `DB`; o conversor só passa para minúsculas (`cr`/`db`), **sem inverter nem alternar**.
+- Valor: as 8 últimas posições trazem os centavos sem zeros à esquerda, alinhados à esquerda e completados com espaços (`18911   ` = 189,11). O conversor tira os espaços, completa com zeros à esquerda até 8 dígitos e insere a vírgula.
+
+**Layout antigo (AA)** — continua funcionando.
+- Posições 19-20 vêm `AA`: `db` na linha ímpar e `cr` na par.
+- Valor com 8 dígitos (`00099385`).
+
+A saída é igual nos dois layouts:
+
+| Campo | Layout atual (entrada) | Layout antigo (entrada) | Saída |
+|---|---|---|---|
+| Posições 19-20 | `CR` / `DB` | `AA` | `cr` / `db` |
+| Valor (8 últimas posições) | `18911   ` | `00018911` | `000189,11` |
+| Valor | `315     ` | `00000315` | `000003,15` |
+| Acentos no histórico (opcional) | `MÊS`, `FÉRIAS` | idem | `MES`, `FERIAS` |
+| `CCUSTO00001` (opcional) | `CCUSTO00001` | idem | `CCUSTO01100` |
+
+Validações no resumo: número de linhas par; valor numérico nas 8 últimas posições (com ou sem zeros à esquerda); tipo `AA` ou `CR`/`DB` (**misturar os dois layouts no mesmo arquivo é erro**); no layout atual, cada par tem exatamente um `CR` e um `DB`; pares com mesma data, centro de custo e valor; soma `db` = soma `cr`; saída com tamanho da entrada + 1; todos os caracteres cabem em Windows-1252.
 
 Configurações ajustáveis no topo de `dominio-totvs/converter.js`:
-- `FIRST_LINE_TYPE = 'db'`: se a contadora inverter a regra, altere para `'cr'`.
+- `FIRST_LINE_TYPE = 'db'`: vale só para o layout antigo (AA); se a contadora inverter a regra, altere para `'cr'`.
 - `CCUSTO_MAP`: mapeamento de centro de custo (ex.: `CCUSTO00001` → `CCUSTO01100`).
 - `º` e `°` (ex.: `13º SALÁRIO`) viram **espaço** para manter o alinhamento de colunas fixas.
 
