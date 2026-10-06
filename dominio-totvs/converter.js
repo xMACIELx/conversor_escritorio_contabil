@@ -76,7 +76,10 @@
   }
 
   function formatValue(digits) {
-    return digits.slice(0, -2) + ',' + digits.slice(-2);
+    // Sem zeros à esquerda (o import da Domínio ignorava a última casa decimal com "002351,46");
+    // mantém ao menos um dígito antes da vírgula (0,01).
+    const int = digits.slice(0, -2).replace(/^0+(?=\d)/, '');
+    return int + ',' + digits.slice(-2);
   }
 
   function lineTypeField(line) {
@@ -261,10 +264,10 @@
 
     const badLen = [];
     outLines.forEach((o, i) => {
-      if (infos[i].validValue && o.length !== inText[i].length + 1) badLen.push(i + 1);
+      if (infos[i].validValue && !/^\d+,\d{2}$/.test(o.slice(inText[i].length - VALUE_DIGITS))) badLen.push(i + 1);
     });
-    add('tamanho', 'Cada linha de saída tem o tamanho da entrada + 1', badLen.length === 0,
-      badLen.length ? 'Linhas com tamanho diferente: ' + listNumbers(badLen) : 'Alinhamento preservado', badLen);
+    add('tamanho', 'Valor na saída sem zeros à esquerda, na mesma posição de início', badLen.length === 0,
+      badLen.length ? 'Linhas com problema: ' + listNumbers(badLen) : 'Alinhamento preservado', badLen);
 
     let sumDb = 0, sumCr = 0;
     fields.forEach((f, i) => {

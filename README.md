@@ -83,7 +83,7 @@ O conversor aceita **dois layouts** de entrada e detecta qual é pelo campo de t
 
 **Layout principal: Domínio atual (CR/DB)** — o exportado hoje pela Domínio.
 - Posições 19-20 já vêm `CR` ou `DB`; o conversor só passa para minúsculas (`cr`/`db`), **sem inverter nem alternar**.
-- Valor: as 8 últimas posições trazem os centavos sem zeros à esquerda, alinhados à esquerda e completados com espaços (`18911   ` = 189,11). O conversor tira os espaços, completa com zeros à esquerda até 8 dígitos e insere a vírgula.
+- Valor: as 8 últimas posições trazem os centavos sem zeros à esquerda, alinhados à esquerda e completados com espaços (`18911   ` = 189,11). O conversor tira os espaços, insere a vírgula e grava o valor **sem zeros à esquerda** (`189,11`; a Domínio ignorava a última casa decimal com `000189,11`).
 
 **Layout antigo (AA)** — continua funcionando.
 - Posições 19-20 vêm `AA`: `db` na linha ímpar e `cr` na par.
@@ -99,7 +99,7 @@ A saída é igual nos dois layouts:
 | Acentos no histórico (opcional) | `MÊS`, `FÉRIAS` | idem | `MES`, `FERIAS` |
 | `CCUSTO00001` (opcional) | `CCUSTO00001` | idem | `CCUSTO01100` |
 
-Validações no resumo: número de linhas par; valor numérico nas 8 últimas posições (com ou sem zeros à esquerda); tipo `AA` ou `CR`/`DB` (**misturar os dois layouts no mesmo arquivo é erro**); no layout atual, cada par tem exatamente um `CR` e um `DB`; pares com mesma data, centro de custo e valor; soma `db` = soma `cr`; saída com tamanho da entrada + 1; todos os caracteres cabem em Windows-1252.
+Validações no resumo: número de linhas par; valor numérico nas 8 últimas posições (com ou sem zeros à esquerda); tipo `AA` ou `CR`/`DB` (**misturar os dois layouts no mesmo arquivo é erro**); no layout atual, cada par tem exatamente um `CR` e um `DB`; pares com mesma data, centro de custo e valor; soma `db` = soma `cr`; valor na saída sem zeros à esquerda; todos os caracteres cabem em Windows-1252.
 
 Configurações ajustáveis no topo de `dominio-totvs/converter.js`:
 - `FIRST_LINE_TYPE = 'db'`: vale só para o layout antigo (AA); se a contadora inverter a regra, altere para `'cr'`.
