@@ -26,7 +26,7 @@ const domFile = path.join(SAMPLES, 'GOTA DOMINIO GERADO.TXT');
 const refFile = path.join(SAMPLES, 'GOTA TESTE.TXT');
 
 console.log('\nTestes unitários');
-check('vírgula antes dos 2 últimos dígitos, mantendo zeros', C.formatValue('00099385') === '000993,85');
+check('vírgula antes dos 2 últimos dígitos, sem zeros à esquerda', C.formatValue('00099385') === '993,85');
 check('remove acentos sem mudar tamanho', (() => {
   const s = 'MÊS FÉRIAS PRÉ 13º SALÁRIO AÇÃO';
   const r = C.removeAccents(s);
@@ -59,18 +59,18 @@ const mk = (seq, tipo, conta, val) => seq + 'GERAL 30092026' + tipo + conta + 'C
 const nIn1 = mk('0001', 'CR', '2131101', '18911   ');
 const nIn2 = mk('0002', 'DB', '2131211', '18911   ');
 const nOut1 = C.convertLine(nIn1, 1).out, nOut2 = C.convertLine(nIn2, 2).out;
-check('CR/DB: linha 1 -> "cr" e valor 000189,11', nOut1 === C.removeAccents(mk('0001', 'cr', '2131101', '000189,11')), nOut1);
-check('CR/DB: linha 2 -> "db" e valor 000189,11', nOut2 === C.removeAccents(mk('0002', 'db', '2131211', '000189,11')), nOut2);
+check('CR/DB: linha 1 -> "cr" e valor 189,11', nOut1 === C.removeAccents(mk('0001', 'cr', '2131101', '189,11')), nOut1);
+check('CR/DB: linha 2 -> "db" e valor 189,11', nOut2 === C.removeAccents(mk('0002', 'db', '2131211', '189,11')), nOut2);
 check('CR/DB: não inverte (CR na linha ímpar continua cr, DB na par continua db)', nOut1.substr(18, 2) === 'cr' && nOut2.substr(18, 2) === 'db');
 check('CR/DB: DB na linha ímpar também é respeitado', C.convertLine(nIn2, 1).out.substr(18, 2) === 'db');
-check('valor "315     " -> 000003,15 e "523355  " -> 005233,55 (8 dígitos)',
-  C.convertLine(mk('0001', 'CR', '2131101', '315     '), 1).out.endsWith('000003,15') &&
-  C.convertLine(mk('0001', 'CR', '2131101', '523355  '), 1).out.endsWith('005233,55'));
-check('layout antigo e novo dão o mesmo valor', C.convertLine(mk('0001', 'AA', '2131101', '00018911'), 1).out.endsWith('000189,11'));
+check('valor "315     " -> 3,15 e "523355  " -> 5233,55',
+  C.convertLine(mk('0001', 'CR', '2131101', '315     '), 1).out.endsWith('3,15') &&
+  C.convertLine(mk('0001', 'CR', '2131101', '523355  '), 1).out.endsWith('5233,55'));
+check('layout antigo e novo dão o mesmo valor', C.convertLine(mk('0001', 'AA', '2131101', '00018911'), 1).out.endsWith('189,11'));
 const pairNew = C.convertText(nIn1 + '\r\n' + nIn2 + '\r\n');
 check('CR/DB: layout detectado = atual, sem erros, soma db = cr',
   pairNew.layout === 'atual' && pairNew.layoutLabel === 'Domínio atual (CR/DB)' && !pairNew.hasErrors && pairNew.sumDbCents === 18911 && pairNew.sumCrCents === 18911);
-check('CR/DB: tamanho da saída = entrada + 1', pairNew.outputLines.every((o, i) => o.length === pairNew.inputLines[i].length + 1));
+check('CR/DB: valor começa na mesma posição, sem zeros à esquerda', pairNew.outputLines.every((o, i) => /^\d+,\d{2}$/.test(o.slice(pairNew.inputLines[i].length - 8))));
 check('AA: layout detectado = antigo', C.convertText(l1 + '\n' + l1).layoutLabel === 'Layout antigo (AA)');
 const bothCr = C.convertText(nIn1 + '\n' + nIn1);
 check('CR/DB: par com dois CR é erro', bothCr.hasErrors && bothCr.checks.find(c => c.id === 'par_crdb').ok === false);
@@ -92,9 +92,9 @@ if (!fs.existsSync(contFile)) {
   check('CONT GOTA: 727 cr + 727 db, soma db = soma cr',
     r.outputLines.filter(o => o.substr(18, 2) === 'cr').length === 727 && r.outputLines.filter(o => o.substr(18, 2) === 'db').length === 727 &&
     r.sumDbCents === r.sumCrCents && r.sumDbCents > 0, 'db ' + r.sumDbCents + ' cr ' + r.sumCrCents);
-  check('CONT GOTA: todos os valores com vírgula (formato 000000,00)', r.outputLines.every(o => /\d{6},\d{2}$/.test(o)));
-  check('CONT GOTA: primeira linha = esperado', r.outputLines[0].startsWith('0001GERAL 30092026cr2131101CCUSTO00000 2131001') && r.outputLines[0].endsWith('000189,11'));
-  check('CONT GOTA: saída = entrada + 1 em todas as linhas, CRLF', r.outputLines.every(o => o.length === 152) && r.outputText.endsWith('\r\n'));
+  check('CONT GOTA: todos os valores com vírgula (formato sem zeros à esquerda)', r.outputLines.every(o => /\d+,\d{2}$/.test(o)));
+  check('CONT GOTA: primeira linha = esperado', r.outputLines[0].startsWith('0001GERAL 30092026cr2131101CCUSTO00000 2131001') && r.outputLines[0].endsWith('189,11'));
+  check('CONT GOTA: saída termina em CRLF', r.outputText.endsWith('\r\n'));
 }
 
 console.log('\nTestes com os arquivos de exemplo');
@@ -109,7 +109,7 @@ if (!fs.existsSync(domFile) || !fs.existsSync(refFile)) {
   const res = C.convertText(dec.text);
   const ref = C.splitLines(C.decodeBuffer(new Uint8Array(fs.readFileSync(refFile)).buffer).text).map(l => l.text);
 
-  const expected = ref.slice(0, 2).map(l => C.removeAccents(l));
+  const expected = ref.slice(0, 2).map(l => C.removeAccents(l).replace(/0+(?=\d+,\d{2}$)/, ''));
   check('a) 2 primeiras linhas = GOTA TESTE.TXT (exceto acentos)',
     res.outputLines[0] === expected[0] && res.outputLines[1] === expected[1],
     JSON.stringify([res.outputLines.slice(0, 2), expected]));
