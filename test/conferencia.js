@@ -125,7 +125,7 @@ module.exports = function (check) {
   check('CST ICMS de 4 dígitos carrega o CST como está no C170', cst(2)[0].cst === '0101' && cst(3)[0].cst === '1234');
   check('CST ICMS de 2 dígitos carrega o CST como está no C170', cst(4)[0].cst === '10');
   check('CST ICMS ausente: CST vazio', por(8, 'CST_ICMS')[0].cst === '');
-  check('inconsistência de PIS/COFINS carrega o CST de ICMS do item', por(9, 'CST_PIS')[0].cst === '900' && por(9, 'CST_COFINS')[0].cst === '900');
+  check('inconsistência de PIS/COFINS carrega o CST_PIS / CST_COFINS correspondente', por(9, 'CST_PIS')[0].cst === '00' && por(9, 'CST_COFINS')[0].cst === '100');
   check('inconsistência de base carrega o CST de ICMS do item', unica('051', '0,00')[0].cst === '051' && unica('040', '9,00')[0].cst === '040');
   check('todas as inconsistências têm o campo cst (texto)', r.inconsistencias.every(i => typeof i.cst === 'string'));
 
@@ -161,17 +161,153 @@ module.exports = function (check) {
   const csv = K.gerarCsv(rg.inconsistencias);
   const linhasCsv = csv.split('\r\n');
   check('CSV começa com BOM UTF-8', csv.charCodeAt(0) === 0xFEFF && Buffer.from(csv.slice(0, 1), 'utf8').equals(Buffer.from([0xEF, 0xBB, 0xBF])));
-  check('CSV: cabeçalho e ordem das colunas', linhasCsv[0] === '﻿linha;registro;campo;valor;motivo;item;CST', linhasCsv[0]);
+  check('CSV: cabeçalho e ordem das colunas', linhasCsv[0] === '﻿linha;registro;campo;valor;motivo;item;CST;NF;serie;data;operacao;chave', linhasCsv[0]);
   check('CSV: todas as inconsistências (não limitado a 2.000)', linhasCsv.length === 5501 + 2 && linhasCsv[linhasCsv.length - 1] === '', String(linhasCsv.length));
   check('CSV: quebra de linha CRLF (sem LF solto)', !/[^\r]\n/.test(csv) && csv.endsWith('\r\n'));
   check('CSV: linha de dados no formato esperado',
-    linhasCsv[1] === '2;"0200";"COD_NCM";"XX";"NCM fora do formato de 8 dígitos";"G2";""', linhasCsv[1]);
-  check('CSV: CST preenchido', /;"051"$/.test(linhasCsv[3]), linhasCsv[3]);
+    linhasCsv[1] === '2;"0200";"COD_NCM";"XX";"NCM fora do formato de 8 dígitos";"G2";"";"";"";"";"";""', linhasCsv[1]);
+  check('CSV: CST preenchido', /;"051";"";"";"";"";""$/.test(linhasCsv[3]), linhasCsv[3]);
   const esc = K.gerarCsv([{ linha: 7, registro: 'C170', campo: 'COD_ITEM', valor: 'A"B;C', motivo: 'diz "x"; y', item: 'it;em', cst: '' }]).split('\r\n');
   check('CSV: aspas duplas escapadas e ponto e vírgula dentro de aspas',
-    esc[1] === '7;"C170";"COD_ITEM";"A""B;C";"diz ""x""; y";"it;em";""', esc[1]);
-  check('CSV vazio: só BOM e cabeçalho', K.gerarCsv([]) === '﻿linha;registro;campo;valor;motivo;item;CST\r\n');
+    esc[1] === '7;"C170";"COD_ITEM";"A""B;C";"diz ""x""; y";"it;em";"";"";"";"";"";""', esc[1]);
+  check('CSV vazio: só BOM e cabeçalho', K.gerarCsv([]) === '﻿linha;registro;campo;valor;motivo;item;CST;NF;serie;data;operacao;chave\r\n');
   const partes = K.gerarCsvPartes(rg.inconsistencias, 1000);
   check('CSV em partes: várias partes, BOM só na primeira, mesmo conteúdo',
     partes.length > 1 && partes.join('') === csv && partes.slice(1).every(p => p.charCodeAt(0) !== 0xFEFF), String(partes.length));
+
+  // ---- Contexto da nota (C100) ----
+  // C100: [2] IND_OPER [3] IND_EMIT [4] COD_PART [5] COD_MOD [6] COD_SIT [7] SER [8] NUM_DOC [9] CHV_NFE [10] DT_DOC
+  const r100 = (oper, nf, serie, data, chave) => {
+    const f = new Array(30).fill('');
+    f[1] = 'C100'; f[2] = oper; f[3] = '0'; f[5] = '55'; f[6] = '00'; f[7] = serie; f[8] = nf; f[9] = chave; f[10] = data;
+    return f.join('|') + '|';
+  };
+  const CH1 = '35260112345678000190550010000000011000000011';
+  const CH2 = '35260112345678000190550010000000021000000022';
+  const ruim = { icms: '040', bcIcms: '5,00', pis: '01', cofins: '01' }; // 1 inconsistência de ICMS
+  const bom = { icms: '000', bcIcms: '5,00', pis: '99', cofins: '99' };
+  const tn = [
+    r0200('N1', '12345678'),
+    r170('N1', ruim),                                   // 2: sem C100 antes
+    r100('1', '100', '1', '05012026', CH1),             // 3
+    r170('N1', ruim),                                   // 4
+    r170('N1', bom),                                    // 5: ok
+    r170('N1', ruim),                                   // 6
+    r100('0', '200', '2', '06012026', CH2),             // 7
+    r170('N1', ruim),                                   // 8
+    '|C990|9|',
+    r170('N1', ruim)                                    // 10: depois do fim do bloco C
+  ].join('\n');
+  const rn = K.checkText(tn);
+  const nota = l => rn.inconsistencias.find(i => i.linha === l);
+  const dados = i => [i.nf, i.serie, i.data, i.operacao, i.chave].join('/');
+  check('C170 sem C100 antes: não quebra e deixa os campos da nota vazios', dados(nota(2)) === '////' && nota(2).nf === '' && nota(2).chave === '');
+  check('contexto do C100 propagado para os C170 seguintes', dados(nota(4)) === ['100', '1', '05012026', '1', CH1].join('/') && dados(nota(6)) === dados(nota(4)), dados(nota(4)));
+  check('contexto troca no próximo C100', dados(nota(8)) === ['200', '2', '06012026', '0', CH2].join('/'), dados(nota(8)));
+  check('contexto zera no fim do bloco C (C990)', dados(nota(10)) === '////');
+  check('contagem de C100 e de C170 sem C100', rn.registrosC100 === 2 && rn.c170SemC100 === 2, JSON.stringify([rn.registrosC100, rn.c170SemC100]));
+  check('inconsistência do 0200 não leva contexto de nota', K.checkText(r100('1', '1', '1', '01012026', CH1) + '\n' + r0200('A', '')).inconsistencias[0].nf === '');
+  check('contexto igual lendo em blocos', (() => {
+    const c2 = K.createChecker();
+    for (let i = 0; i < tn.length; i += 5) c2.feedChunk(tn.slice(i, i + 5));
+    return JSON.stringify(c2.finish().inconsistencias) === JSON.stringify(rn.inconsistencias);
+  })());
+
+  // ---- Regra de PIS/COFINS (CST x base) ----
+  const pc = (oper, cst, bc, qual) => {
+    const o = { icms: '000', bcIcms: '1,00', pis: '99', cofins: '99' };
+    if (qual === 'pis') { o.pis = cst; o.bcPis = bc; } else { o.cofins = cst; o.bcCofins = bc; }
+    return K.checkText([r0200('P1', '12345678'), r100(oper, '1', '1', '01012026', CH1), r170('P1', o)].join('\n'))
+      .inconsistencias.filter(i => i.campo === (qual === 'pis' ? 'VL_BC_PIS' : 'VL_BC_COFINS'));
+  };
+  const LISTAS = { '0': ['50', '51', '52', '53', '56', '98'], '1': ['01', '02', '03', '49'] };
+  Object.keys(LISTAS).forEach(oper => LISTAS[oper].forEach(cst => ['pis', 'cofins'].forEach(qual => {
+    const nome = qual.toUpperCase(), op = oper === '0' ? 'entrada' : 'saída', tag = nome + ' ' + cst + ' de ' + op;
+    ['0,00', ''].forEach(bc => {
+      const m = pc(oper, cst, bc, qual);
+      check('CST ' + tag + ' com base ' + (bc || 'vazia') + ' é apontado',
+        m.length === 1 && m[0].motivo === 'CST ' + nome + ' ' + cst + ' de ' + op + ' deve ter base maior que 0, mas a base é 0' &&
+        m[0].cst === cst && m[0].operacao === oper && m[0].valor === (bc || '0'), JSON.stringify(m));
+    });
+    check('CST ' + tag + ' com base maior que 0 não é apontado', pc(oper, cst, '10,00', qual).length === 0);
+    check('CST ' + tag + ' com base não numérica: aponta "não é número"', (m => m.length === 1 && m[0].motivo === 'Base de cálculo não é número')(pc(oper, cst, 'abc', qual)));
+  })));
+  // A lista de saída não vale na entrada e vice-versa; CSTs fora das listas nunca são apontados
+  check('CST de saída (01) em nota de entrada não é apontado', pc('0', '01', '0,00', 'pis').length === 0 && pc('0', '49', '0,00', 'cofins').length === 0);
+  check('CST de entrada (51) em nota de saída não é apontado', pc('1', '51', '0,00', 'pis').length === 0 && pc('1', '98', '0,00', 'cofins').length === 0);
+  const fora = ['04', '05', '06', '07', '08', '09', '49', '50', '60', '66', '70', '73', '74', '75', '99'];
+  check('CST fora das listas (base 0 ou > 0) não é apontado, entrada e saída',
+    ['0', '1'].every(oper => fora.every(cst => (LISTAS[oper].includes(cst)) ||
+      ['pis', 'cofins'].every(q => pc(oper, cst, '0,00', q).length === 0 && pc(oper, cst, '9,00', q).length === 0))));
+  check('PIS e COFINS são conferidos separadamente', (() => {
+    const t = [r0200('P1', '12345678'), r100('0', '1', '1', '01012026', CH1),
+      r170('P1', { icms: '000', bcIcms: '1,00', pis: '51', bcPis: '0,00', cofins: '51', bcCofins: '8,00' })].join('\n');
+    const m = K.checkText(t).inconsistencias;
+    return m.length === 1 && m[0].campo === 'VL_BC_PIS' && m[0].cst === '51';
+  })());
+  check('tabela "sem base" de PIS/COFINS continua vazia (pendente da fiscal)', Object.keys(require('../conferencia-ncm-cst/config.js').BASE_POR_CST_PIS_COFINS).length === 0);
+  const semC100 = K.checkText([r0200('P1', '12345678'), r170('P1', { icms: '000', bcIcms: '1,00', pis: '51', bcPis: '0', cofins: '01', bcCofins: '0' })].join('\n'));
+  check('sem C100 (operação desconhecida): regra de PIS/COFINS não é aplicada e fica registrado',
+    semC100.total === 0 && semC100.c170PisCofinsSemOperacao === 1, JSON.stringify([semC100.total, semC100.c170PisCofinsSemOperacao]));
+  check('IND_OPER inválido: regra de PIS/COFINS não é aplicada',
+    K.checkText([r0200('P1', '12345678'), r100('9', '1', '1', '01012026', CH1), r170('P1', { icms: '000', bcIcms: '1,00', pis: '51', bcPis: '0', cofins: '01', bcCofins: '0' })].join('\n')).total === 0);
+  check('regra de ICMS não muda com o contexto da nota',
+    K.checkText([r0200('P1', '12345678'), r100('1', '1', '1', '01012026', CH1), r170('P1', { icms: '000', bcIcms: '0,00', pis: '99', cofins: '99' })].join('\n'))
+      .inconsistencias.map(i => i.motivo).join() === 'CST 000 tributado, mas a base é 0');
+
+  // ---- Resumo por nota ----
+  const tr = [
+    r0200('R1', '12345678'),
+    r170('R1', ruim),                                                                         // sem nota: fora do resumo por nota
+    r100('1', '300', '1', '10012026', CH1),
+    r170('R1', ruim),                                                                         // ICMS
+    r170('R1', { icms: '040', bcIcms: '5,00', pis: '01', bcPis: '0', cofins: '02', bcCofins: '0' }), // ICMS + PIS + COFINS (saída)
+    r170('ZZ', { icms: '000', bcIcms: '1,00', pis: '99', cofins: '99' }),                      // item sem 0200
+    r100('0', '301', '1', '11012026', CH2),
+    r170('R1', { icms: '000', bcIcms: '1,00', pis: '99', cofins: '99' }),                      // ok
+    r100('0', '302', '3', '12012026', ''),
+    r170('R1', { icms: '000', bcIcms: '0,00', pis: '51', bcPis: '0', cofins: '99' })           // ICMS + PIS
+  ].join('\n');
+  const rr = K.checkText(tr);
+  const pn = rr.resumo.porNota;
+  check('resumo por nota: só notas com inconsistência, mais inconsistências primeiro',
+    pn.length === 2 && pn[0].nf === '300' && pn[0].total === 7 && pn[1].nf === '302' && pn[1].total === 2, JSON.stringify(pn));
+  check('resumo por nota: NF, série, data, operação e chave',
+    pn[0].serie === '1' && pn[0].data === '10012026' && pn[0].operacao === '1' && pn[0].chave === CH1 &&
+    pn[1].serie === '3' && pn[1].data === '12012026' && pn[1].operacao === '0' && pn[1].chave === '');
+  check('resumo por nota: tipos de motivo (sem repetir)', pn[0].motivos.length === 4 && new Set(pn[0].motivos).size === 4 &&
+    pn[0].motivos.includes('CST PIS de saída deve ter base maior que 0, mas a base é 0') &&
+    pn[0].motivos.includes('CST COFINS de saída deve ter base maior que 0, mas a base é 0') &&
+    pn[0].motivos.includes('Item sem cadastro no registro 0200 (NCM não conferida)') &&
+    pn[1].motivos.includes('CST PIS de entrada deve ter base maior que 0, mas a base é 0') &&
+    pn[1].motivos.includes('CST tributado, mas a base é 0'), JSON.stringify(pn));
+  check('resumo por nota não altera o resumo geral (total conta também as sem nota)',
+    rr.resumo.total === 10 && rr.total === 10 && pn.reduce((s, n) => s + n.total, 0) === 9);
+  check('resumo por nota igual lendo em blocos', (() => {
+    const c3 = K.createChecker();
+    for (let i = 0; i < tr.length; i += 11) c3.feedChunk(tr.slice(i, i + 11));
+    return JSON.stringify(c3.finish().resumo.porNota) === JSON.stringify(pn);
+  })());
+  check('resumo por nota vazio sem inconsistências', K.checkText(r0200('A1', '12345678')).resumo.porNota.length === 0);
+
+  // ---- CSV de inconsistências com contexto da nota ----
+  const csvN = K.gerarCsv(rr.inconsistencias).split('\r\n');
+  check('CSV: contexto da nota nas últimas colunas', csvN[2] === '4;"C170";"VL_BC_ICMS";"5,00";"CST 040 não tributado, mas a base é maior que 0";"R1";"040";"300";"1";"10012026";"1";"' + CH1 + '"', csvN[2]);
+  check('CSV: inconsistência sem nota com colunas da nota vazias', /;"040";"";"";"";"";""$/.test(csvN[1]), csvN[1]);
+  check('CSV: PIS/COFINS usa o CST_PIS / CST_COFINS na coluna CST',
+    csvN.some(l => /;"VL_BC_PIS";"0";"CST PIS 01 de saída deve ter base maior que 0, mas a base é 0";"R1";"01";"300"/.test(l)) &&
+    csvN.some(l => /;"VL_BC_COFINS";"0";"CST COFINS 02 de saída deve ter base maior que 0, mas a base é 0";"R1";"02";"300"/.test(l)), csvN.join('\n'));
+  check('CSV: BOM, CRLF e ponto e vírgula', csvN[0].charCodeAt(0) === 0xFEFF && csvN[0].split(';').length === 12 && csvN.every(l => l === '' || l.split(';').length >= 12));
+
+  // ---- CSV por nota ----
+  const csvNotas = K.gerarCsvNotas(pn);
+  const ln = csvNotas.split('\r\n');
+  check('CSV por nota: BOM UTF-8 e cabeçalho', csvNotas.charCodeAt(0) === 0xFEFF && ln[0] === '﻿NF;serie;data;operacao;chave;quantidade_inconsistencias;motivos', ln[0]);
+  check('CSV por nota: uma linha por nota, CRLF', ln.length === 4 && ln[3] === '' && !/[^\r]\n/.test(csvNotas));
+  check('CSV por nota: linha de dados (quantidade sem aspas, motivos separados por " | ")',
+    ln[1].startsWith('"300";"1";"10012026";"1";"' + CH1 + '";7;"') && ln[1].split(' | ').length === 4 &&
+    ln[2] === '"302";"3";"12012026";"0";"";2;"' + pn[1].motivos.join(' | ') + '"', ln[2]);
+  check('CSV por nota vazio: só BOM e cabeçalho', K.gerarCsvNotas([]) === '﻿NF;serie;data;operacao;chave;quantidade_inconsistencias;motivos\r\n');
+  const pnt = K.gerarCsvNotasPartes(Array.from({ length: 2500 }, (_, k) => ({ nf: String(k), serie: '1', data: '', operacao: '1', chave: '', total: 1, motivos: ['x'] })), 1000);
+  check('CSV por nota em partes: BOM só na primeira e mesmo conteúdo', pnt.length === 3 && pnt.slice(1).every(p => p.charCodeAt(0) !== 0xFEFF) && pnt.join('').split('\r\n').length === 2502);
 };
