@@ -19,6 +19,15 @@
       para: 'Planilha (.xls) + Domínio (.txt)',
       caminho: 'ponto-dominio/',
       status: 'pronto'
+    },
+    {
+      id: 'conferencia-ncm-cst',
+      nome: 'Conferência de NCM e CST',
+      descricao: 'Lê o SPED Fiscal e lista as inconsistências de NCM (registro 0200) e de CST e base de cálculo (registro C170).',
+      de: 'SPED Fiscal (.txt)',
+      para: 'Lista de inconsistências',
+      caminho: 'conferencia-ncm-cst/',
+      status: 'pronto'
     }
   ];
 

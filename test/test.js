@@ -18,6 +18,8 @@ tools.forEach(tool => {
     const indexPath = path.join(dir, 'index.html');
     const exists = fs.existsSync(dir) && fs.existsSync(indexPath);
     check(`ferramenta "${tool.id}" aponta para pasta com index.html (${tool.caminho})`, exists);
+    const docker = fs.readFileSync(path.join(__dirname, '..', 'Dockerfile'), 'utf8');
+    check(`ferramenta "${tool.id}" é copiada no Dockerfile`, docker.includes('COPY ' + tool.caminho + ' '));
   }
 });
 
