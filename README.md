@@ -21,9 +21,11 @@ Painel de ferramentas estático (HTML/JS puro, sem backend e sem build) para pro
 │   ├── converter.js        # Regras puras de conversão e validações (browser + Node)
 │   └── style.css           # Estilos específicos da ferramenta
 ├── ponto-dominio/          # Ponto → Folha Domínio (ver seção abaixo; vendor/ = pdf.js e SheetJS)
+├── conferencia-ncm-cst/    # Conferência de NCM e CST (ver seção abaixo)
 ├── test/
 │   ├── test.js             # Testes unitários, de integridade e com amostras
-│   └── ponto.js            # Testes da ferramenta Ponto → Folha Domínio
+│   ├── ponto.js            # Testes da ferramenta Ponto → Folha Domínio
+│   └── conferencia.js      # Testes da Conferência de NCM e CST
 ├── samples/                # Arquivos reais de teste (ignorado no git)
 ├── Dockerfile              # Imagem Nginx mínima para produção
 ├── nginx.conf              # Servidor estático com headers de segurança
@@ -191,6 +193,24 @@ Ambos podem ser alterados na própria tela (painel "Regras de conversão em uso"
    A saída esperada é `FC: nenhuma diferença encontrada`.
 
 Os testes (`node test/test.js`) já fazem o equivalente em memória: gravam o `.xls`, leem de volta e aplicam a regra do `.jar`, exigindo o **mesmo** `.txt` gerado direto. A regra do `.jar` foi implementada a partir da descrição do fluxo (não havia JDK para rodar `javap`), por isso a comparação com `fc` é a verificação final.
+
+---
+
+## Conferência de NCM e CST
+
+Lê o **SPED Fiscal** (EFD ICMS/IPI, `.txt`) e lista as inconsistências, uma por linha: linha do arquivo, registro, campo, valor, motivo e item. Tudo no navegador, sem rede (mesmo CSP do painel). O arquivo é lido em blocos de 4 MB, então aguenta arquivos grandes; a tabela mostra até 2.000 inconsistências e o total sai exato no resumo.
+
+```
+conferencia-ncm-cst/
+├── index.html   # Interface: escolher o arquivo e ver a lista
+├── app.js       # DOM: leitura em blocos, avisos e tabela
+├── config.js    # Formatos de NCM/CST e tabela base × CST (regra fiscal, do escritório)
+├── core.js      # Regras puras de conferência (browser + Node)
+└── style.css    # Estilos específicos da ferramenta
+```
+
+- **Registros conferidos:** 0200 (formato da NCM) e C170 (formato dos CSTs de ICMS, PIS e COFINS; item sem cadastro no 0200; base × CST).
+- **Regra base × CST pendente:** enquanto `REGRA_BASE_VALIDADA` for `false` em `config.js`, a conferência de base × CST não aponta nada, e a tela mostra um aviso amarelo de que a regra ainda não foi validada. Só o Pedro valida e preenche a tabela.
 
 ---
 

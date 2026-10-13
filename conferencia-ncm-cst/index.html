@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Conferência de NCM e CST</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="../assets/shared.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="wrap">
+      <div class="top-nav">
+        <a href="../" class="back-link">← Início</a>
+        <h1>Conferência de <span>NCM e CST</span></h1>
+      </div>
+      <p class="privacy"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1 2.5 3v4.5c0 3.3 2.3 6 5.5 7.5 3.2-1.5 5.5-4.2 5.5-7.5V3L8 1Zm-1 9.2L4.8 8l.9-.9L7 8.4l3.3-3.3.9.9L7 10.2Z" fill="currentColor"/></svg>
+        Seus dados não saem deste computador</p>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="step">
+      <h2><b>1</b> Escolha o arquivo SPED Fiscal</h2>
+      <label id="drop" class="drop" tabindex="0">
+        <input id="file" type="file" accept=".txt,.TXT" hidden>
+        <span class="drop-main" id="drop-main">Arraste o arquivo .txt do SPED Fiscal aqui</span>
+        <span class="drop-sub" id="drop-sub">ou clique para procurar no computador</span>
+      </label>
+      <p id="status" class="note" role="status" aria-live="polite">Nenhum arquivo escolhido.</p>
+    </section>
+
+    <section class="step" id="result" hidden>
+      <h2><b>2</b> Confira o resultado</h2>
+      <div id="warn-base" class="banner warn" role="alert" hidden>
+        <strong>Regra base × CST ainda não validada.</strong>
+        A conferência entre a base de cálculo e o CST está desligada até o Pedro validar a regra. Os itens abaixo cobrem só o formato da NCM e dos CSTs e os itens sem cadastro no registro 0200.
+      </div>
+      <div id="banner" class="banner" role="status"></div>
+      <p id="summary" class="note"></p>
+
+      <div id="table-wrap" class="table-wrap" hidden>
+        <table class="incons" id="incons">
+          <caption class="sr-only">Inconsistências encontradas</caption>
+          <thead>
+            <tr>
+              <th scope="col" class="num">Linha</th>
+              <th scope="col">Registro</th>
+              <th scope="col">Campo</th>
+              <th scope="col">Valor</th>
+              <th scope="col">Motivo</th>
+              <th scope="col">Item</th>
+            </tr>
+          </thead>
+          <tbody id="incons-body"></tbody>
+        </table>
+      </div>
+      <p id="truncated" class="note" hidden></p>
+    </section>
+  </main>
+
+  <footer class="wrap foot">Tudo é processado aqui no navegador. Nenhum dado é enviado, salvo ou registrado.</footer>
+
+  <script src="config.js"></script>
+  <script src="core.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
