@@ -118,4 +118,60 @@ module.exports = function (check) {
       /não é esperado no SPED/.test(cst(l)[0].motivo) && /tributação do contribuinte/.test(cst(l)[0].motivo)), JSON.stringify(q.inconsistencias));
   check('CST de 2 dígitos continua com o motivo genérico', cst(4).length === 1 && cst(4)[0].motivo === 'CST com formato inválido');
   check('CST de 4 dígitos não gera conferência de base', q.inconsistencias.filter(i => i.campo === 'VL_BC_ICMS').length === 0);
+
+  // CST em cada inconsistência
+  check('inconsistência de NCM (0200) fica com CST vazio', por(3, 'COD_NCM')[0].cst === '' && por(4, 'COD_NCM')[0].cst === '');
+  check('item sem cadastro no 0200 fica com CST vazio', por(11, 'COD_ITEM')[0].cst === '');
+  check('CST ICMS de 4 dígitos carrega o CST como está no C170', cst(2)[0].cst === '0101' && cst(3)[0].cst === '1234');
+  check('CST ICMS de 2 dígitos carrega o CST como está no C170', cst(4)[0].cst === '10');
+  check('CST ICMS ausente: CST vazio', por(8, 'CST_ICMS')[0].cst === '');
+  check('inconsistência de PIS/COFINS carrega o CST de ICMS do item', por(9, 'CST_PIS')[0].cst === '900' && por(9, 'CST_COFINS')[0].cst === '900');
+  check('inconsistência de base carrega o CST de ICMS do item', unica('051', '0,00')[0].cst === '051' && unica('040', '9,00')[0].cst === '040');
+  check('todas as inconsistências têm o campo cst (texto)', r.inconsistencias.every(i => typeof i.cst === 'string'));
+
+  // Resumo com mais de 2.000 inconsistências: conta todas
+  const gran = [r0200('G1', '12345678'), r0200('G2', 'XX')]; // 1 NCM inválida
+  const ESP = { '051': 2500, '090': 1700, '0101': 1000 };    // 5.200 de CST + 1 NCM + 300 sem cadastro
+  Object.keys(ESP).forEach(c => {
+    for (let k = 0; k < ESP[c]; k++) gran.push(r170('G1', { icms: c, bcIcms: c === '0101' ? '1,00' : '0,00', pis: '01', cofins: '01' }));
+  });
+  for (let k = 0; k < 300; k++) gran.push(r170('SEM', ok170));
+  const rg = K.checkText(gran.join('\n'));
+  const res = rg.resumo;
+  const cstDe = c => (res.porCst.find(e => e.cst === c) || {}).total;
+  const motDe = m => (res.porMotivo.find(e => e.motivo === m) || {}).total;
+  check('resumo: total considera todas (mais de 2.000)', res.total === 5501 && rg.total === 5501 && rg.inconsistencias.length === 5501, String(res.total));
+  check('resumo por CST', cstDe('051') === 2500 && cstDe('090') === 1700 && cstDe('0101') === 1000 && cstDe('') === 301, JSON.stringify(res.porCst));
+  check('resumo por CST soma o total', res.porCst.reduce((s, e) => s + e.total, 0) === res.total);
+  check('resumo por motivo agrupa sem o texto variável',
+    motDe('CST deve ter base maior que 0, mas a base é 0: analisar caso a caso') === 4200 &&
+    motDe('Item sem cadastro no registro 0200 (NCM não conferida)') === 300 &&
+    motDe('NCM fora do formato de 8 dígitos') === 1 && res.porMotivo.length === 4 &&
+    res.porMotivo.some(e => /^CST com 4 dígitos/.test(e.motivo) && e.total === 1000), JSON.stringify(res.porMotivo));
+  const cm = (c, m) => (res.porCstMotivo.find(e => e.cst === c && /analisar caso a caso/.test(e.motivo) === m) || {}).total;
+  check('resumo por CST e motivo (051 e 090 base zero)', cm('051', true) === 2500 && cm('090', true) === 1700);
+  check('resumo por CST e motivo soma o total', res.porCstMotivo.reduce((s, e) => s + e.total, 0) === res.total);
+  check('resumo ordenado do maior para o menor', res.porCst.every((e, i, a) => i === 0 || a[i - 1].total >= e.total));
+  check('resumo sem inconsistências', K.checkText(r0200('A1', '12345678')).resumo.total === 0);
+  const cb = K.createChecker();
+  for (let i = 0; i < gran.join('\n').length; i += 1000) cb.feedChunk(gran.join('\n').slice(i, i + 1000));
+  check('resumo igual lendo em blocos', JSON.stringify(cb.finish().resumo) === JSON.stringify(res));
+
+  // CSV
+  const csv = K.gerarCsv(rg.inconsistencias);
+  const linhasCsv = csv.split('\r\n');
+  check('CSV começa com BOM UTF-8', csv.charCodeAt(0) === 0xFEFF && Buffer.from(csv.slice(0, 1), 'utf8').equals(Buffer.from([0xEF, 0xBB, 0xBF])));
+  check('CSV: cabeçalho e ordem das colunas', linhasCsv[0] === '﻿linha;registro;campo;valor;motivo;item;CST', linhasCsv[0]);
+  check('CSV: todas as inconsistências (não limitado a 2.000)', linhasCsv.length === 5501 + 2 && linhasCsv[linhasCsv.length - 1] === '', String(linhasCsv.length));
+  check('CSV: quebra de linha CRLF (sem LF solto)', !/[^\r]\n/.test(csv) && csv.endsWith('\r\n'));
+  check('CSV: linha de dados no formato esperado',
+    linhasCsv[1] === '2;"0200";"COD_NCM";"XX";"NCM fora do formato de 8 dígitos";"G2";""', linhasCsv[1]);
+  check('CSV: CST preenchido', /;"051"$/.test(linhasCsv[3]), linhasCsv[3]);
+  const esc = K.gerarCsv([{ linha: 7, registro: 'C170', campo: 'COD_ITEM', valor: 'A"B;C', motivo: 'diz "x"; y', item: 'it;em', cst: '' }]).split('\r\n');
+  check('CSV: aspas duplas escapadas e ponto e vírgula dentro de aspas',
+    esc[1] === '7;"C170";"COD_ITEM";"A""B;C";"diz ""x""; y";"it;em";""', esc[1]);
+  check('CSV vazio: só BOM e cabeçalho', K.gerarCsv([]) === '﻿linha;registro;campo;valor;motivo;item;CST\r\n');
+  const partes = K.gerarCsvPartes(rg.inconsistencias, 1000);
+  check('CSV em partes: várias partes, BOM só na primeira, mesmo conteúdo',
+    partes.length > 1 && partes.join('') === csv && partes.slice(1).every(p => p.charCodeAt(0) !== 0xFEFF), String(partes.length));
 };
