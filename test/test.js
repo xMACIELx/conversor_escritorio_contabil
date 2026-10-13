@@ -126,7 +126,7 @@ if (!fs.existsSync(domFile) || !fs.existsSync(refFile)) {
   console.log('\n  Competências:', res.competencias.map(c => c.key + '=' + c.count).join(', '));
 }
 
-require('./ponto.js')(check).then(() => require('./ponto-setembro.js')(check)).then(() => {
+require('./ponto.js')(check).then(() => require('./ponto-setembro.js')(check)).then(() => require('./conferencia.js')(check)).then(() => {
   console.log(failures ? '\n' + failures + ' teste(s) FALHARAM' : '\nTodos os testes passaram');
   process.exit(failures ? 1 : 0);
 }, e => {
