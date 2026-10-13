@@ -19,8 +19,18 @@
     '10': 'sem_base', '30': 'sem_base', '40': 'sem_base', '41': 'sem_base',
     '50': 'sem_base', '60': 'sem_base', '70': 'sem_base'
   };
-  // PIS/COFINS: conferência equivalente ainda não decidida; tabela vazia de propósito.
+  // PIS/COFINS, CSTs que "não devem ter base" (chave = CST de 2 dígitos, valor 'sem_base').
+  // PENDENTE: a fiscal da MAC ainda não confirmou se os demais CSTs devem ter base zero; tabela vazia de
+  // propósito, e nenhum CST fora de PIS_COFINS_EXIGE_BASE é apontado. Não preencher sem a confirmação dela.
   const BASE_POR_CST_PIS_COFINS = {};
+
+  // PIS/COFINS, validado pela fiscal da MAC: CSTs que DEVEM ter base maior que 0, conforme a operação
+  // (IND_OPER do C100: 0 = entrada, 1 = saída). Vale para CST_PIS (VL_BC_PIS) e CST_COFINS (VL_BC_COFINS).
+  // Sem C100 (operação desconhecida), a regra não é aplicada.
+  const PIS_COFINS_EXIGE_BASE = {
+    entrada: ['50', '51', '52', '53', '56', '98'],
+    saida: ['01', '02', '03', '49']
+  };
 
   // Formato dos códigos (só formato; não confere se o código existe nas tabelas oficiais).
   const FORMATO_NCM = /^\d{8}$/;
@@ -30,7 +40,7 @@
   const FORMATO_CST_PIS_COFINS = /^(0[1-9]|[1-9]\d)$/;
 
   const api = {
-    REGRA_BASE_VALIDADA, BASE_POR_CST_ICMS, BASE_POR_CST_PIS_COFINS,
+    REGRA_BASE_VALIDADA, BASE_POR_CST_ICMS, BASE_POR_CST_PIS_COFINS, PIS_COFINS_EXIGE_BASE,
     FORMATO_NCM, FORMATO_CST_ICMS, FORMATO_CST_PIS_COFINS
   };
 
