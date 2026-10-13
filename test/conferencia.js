@@ -16,7 +16,7 @@ function r170(item, o) {
 module.exports = function (check) {
   console.log('\nTestes da conferência de NCM/CST');
 
-  const ok170 = { icms: '000', pis: '01', cofins: '01' };
+  const ok170 = { icms: '000', bcIcms: '100,00', pis: '01', cofins: '01' };
   const texto = [
     '|0000|017|0|01012026|31012026|EMPRESA FICTICIA|',
     r0200('A1', '12345678'),   // 2: ok
@@ -50,9 +50,9 @@ module.exports = function (check) {
   check('total de inconsistências', r.total === 9, String(r.total));
   check('cada inconsistência tem linha, campo, valor e motivo',
     r.inconsistencias.every(i => i.linha > 0 && i.campo && i.valor !== undefined && i.motivo));
-  check('regra de base pendente de validação por padrão', r.regraBasePendente === true);
-  check('sem tabela validada, base × CST não aponta nada',
-    K.checkText(r0200('A1', '12345678') + '\n' + r170('A1', { icms: '040', bcIcms: '100,00', pis: '01', cofins: '01' })).total === 0);
+  check('regra de base validada por padrão: sem banner de pendência', r.regraBasePendente === false);
+  check('regra de base pendente quando REGRA_BASE_VALIDADA = false',
+    K.checkText(r0200('A1', '12345678'), { config: { REGRA_BASE_VALIDADA: false } }).regraBasePendente === true);
 
   // Leitura em blocos de 7 caracteres gera o mesmo resultado (inclusive com CRLF partido ao meio)
   const c = K.createChecker();
@@ -61,10 +61,10 @@ module.exports = function (check) {
   check('leitura em blocos = leitura inteira', JSON.stringify(rb.inconsistencias) === JSON.stringify(r.inconsistencias));
   check('última linha sem quebra é lida', K.checkText(r0200('A1', '')).total === 1);
 
-  // Regra base × CST com tabela injetada (a tabela real está pendente de validação)
+  // Regra base × CST com tabela injetada (chave = 2 últimos dígitos do CST)
   const config = {
     REGRA_BASE_VALIDADA: true,
-    BASE_POR_CST_ICMS: { '040': 'sem_base', '000': 'exige_base' },
+    BASE_POR_CST_ICMS: { '40': 'sem_base', '00': 'exige_base' },
     BASE_POR_CST_PIS_COFINS: { '04': 'sem_base', '01': 'exige_base' }
   };
   const t2 = [
@@ -82,4 +82,40 @@ module.exports = function (check) {
   check('base não numérica é apontada', motivos.includes('4:VL_BC_ICMS'));
   check('CST fora da tabela não é conferido', !motivos.some(m => m.startsWith('5:')));
   check('regraBasePendente = false com tabela validada', r2.regraBasePendente === false);
+
+  // Tabela real validada pela fiscal da MAC (config.js), com origem 0 e 2
+  const unica = (cst, bc) => K.checkText(r0200('C1', '12345678') + '\n' +
+    r170('C1', { icms: cst, bcIcms: bc, pis: '01', cofins: '01' })).inconsistencias.filter(i => i.campo === 'VL_BC_ICMS');
+  ['00', '20', '51', '90'].forEach(fim => ['0', '2'].forEach(origem => {
+    const cst = origem + fim;
+    check('CST ' + cst + ' com base > 0 não é apontado', unica(cst, '10,00').length === 0);
+    check('CST ' + cst + ' com base 0 é apontado', unica(cst, '0,00').length === 1);
+    check('CST ' + cst + ' com base vazia é apontado', unica(cst, '').length === 1);
+  }));
+  ['10', '30', '40', '41', '50', '60', '70'].forEach(fim => ['0', '2'].forEach(origem => {
+    const cst = origem + fim;
+    check('CST ' + cst + ' com base 0 não é apontado', unica(cst, '0,00').length === 0 && unica(cst, '').length === 0);
+    const m = unica(cst, '10,00');
+    check('CST ' + cst + ' com base > 0 é apontado', m.length === 1 && /não tributado/.test(m[0].motivo), JSON.stringify(m));
+  }));
+  ['051', '090', '251', '290'].forEach(cst => {
+    const m = unica(cst, '0,00');
+    check('CST ' + cst + ' com base 0: motivo de análise caso a caso', m.length === 1 && /analisar caso a caso/.test(m[0].motivo), JSON.stringify(m));
+  });
+  check('CST 000 com base 0 mantém o motivo comum (sem análise caso a caso)', !/caso a caso/.test(unica('000', '0,00')[0].motivo));
+  check('CST fora da tabela (02, 80) não é conferido', unica('002', '0,00').length === 0 && unica('080', '5,00').length === 0);
+  check('PIS/COFINS não são conferidos quanto à base (decisão pendente)',
+    K.checkText(r0200('C1', '12345678') + '\n' + r170('C1', { icms: '000', bcIcms: '1,00', pis: '04', bcPis: '9,00', cofins: '01', bcCofins: '0' })).total === 0);
+
+  // CST de 4 dígitos (possível CSOSN do Simples)
+  const q = K.checkText([r0200('D1', '12345678'),
+    r170('D1', { icms: '0101', bcIcms: '1,00', pis: '01', cofins: '01' }),
+    r170('D1', { icms: '1234', bcIcms: '1,00', pis: '01', cofins: '01' }),
+    r170('D1', { icms: '10', bcIcms: '1,00', pis: '01', cofins: '01' })].join('\n'));
+  const cst = linha => q.inconsistencias.filter(i => i.linha === linha && i.campo === 'CST_ICMS');
+  check('CST ICMS de 4 dígitos é inconsistência com motivo de CSOSN',
+    [2, 3].every(l => cst(l).length === 1 && /CSOSN do Simples Nacional/.test(cst(l)[0].motivo) &&
+      /não é esperado no SPED/.test(cst(l)[0].motivo) && /tributação do contribuinte/.test(cst(l)[0].motivo)), JSON.stringify(q.inconsistencias));
+  check('CST de 2 dígitos continua com o motivo genérico', cst(4).length === 1 && cst(4)[0].motivo === 'CST com formato inválido');
+  check('CST de 4 dígitos não gera conferência de base', q.inconsistencias.filter(i => i.campo === 'VL_BC_ICMS').length === 0);
 };
