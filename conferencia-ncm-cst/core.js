@@ -75,11 +75,13 @@
 
   function ordenar(lista) {
     return lista.sort((a, b) => b.total - a.total || (a.cst || '').localeCompare(b.cst || '') ||
-      (a.motivo || '').localeCompare(b.motivo || ''));
+      (a.imposto || '').localeCompare(b.imposto || '') || (a.motivo || '').localeCompare(b.motivo || ''));
   }
 
   // options.config substitui a configuração (usado nos testes). Cada inconsistência:
-  // { linha, registro, campo, valor, motivo, item, cst, nf, serie, data, operacao, chave } (linha é 1-based).
+  // { linha, registro, campo, valor, motivo, item, imposto, cst, nf, serie, data, operacao, chave } (linha é 1-based).
+  // imposto = ICMS, PIS ou COFINS conforme a regra que gerou a inconsistência; vazio nas que não são de imposto
+  // (NCM do 0200 e item sem cadastro no 0200).
   // cst = CST do imposto conferido como aparece no C170 (CST_ICMS; CST_PIS ou CST_COFINS nas de PIS/COFINS);
   // vazio quando a inconsistência não tem CST (NCM do 0200 e item sem cadastro no 0200).
   // nf, serie, data, operacao (IND_OPER: 0 entrada, 1 saída) e chave vêm do C100 corrente; vazios sem C100
@@ -100,12 +102,13 @@
     function soma(mapa, chave) { mapa.set(chave, (mapa.get(chave) || 0) + 1); }
 
     // tipo = motivo sem o texto variável; o resumo conta todas as inconsistências, não só as exibidas.
-    function add(linha, registro, campo, valor, motivo, item, cst, tipo, daNota) {
+    function add(linha, registro, campo, valor, motivo, item, cst, tipo, daNota, imposto) {
       cst = cst || '';
+      imposto = imposto || '';
       tipo = tipo || motivo;
       const ctx = daNota || CAMPOS_NOTA_VAZIOS;
       inconsistencias.push({
-        linha, registro, campo, valor: valor === undefined ? '' : valor, motivo, item, cst,
+        linha, registro, campo, valor: valor === undefined ? '' : valor, motivo, item, imposto, cst,
         nf: ctx.nf, serie: ctx.serie, data: ctx.data, operacao: ctx.operacao, chave: ctx.chave
       });
       if (daNota) {
@@ -117,20 +120,24 @@
         n.total++;
         n.tipos.add(tipo);
       }
-      soma(porCst, cst);
+      soma(porCst, imposto + SEP_CHAVE + cst);
       soma(porMotivo, tipo);
-      soma(porCstMotivo, cst + SEP_CHAVE + tipo);
+      soma(porCstMotivo, imposto + SEP_CHAVE + cst + SEP_CHAVE + tipo);
     }
 
     function resumo() {
       const lista = mapa => Array.from(mapa, ([k, total]) => ({ k, total }));
       return {
         total: inconsistencias.length,
-        porCst: ordenar(lista(porCst).map(e => ({ cst: e.k, total: e.total }))),
+        // Agrupado por imposto + CST: o mesmo número pode existir em impostos diferentes (ICMS 051, PIS 51).
+        porCst: ordenar(lista(porCst).map(e => {
+          const p = e.k.split(SEP_CHAVE);
+          return { imposto: p[0], cst: p[1], total: e.total };
+        })),
         porMotivo: ordenar(lista(porMotivo).map(e => ({ motivo: e.k, total: e.total }))),
         porCstMotivo: ordenar(lista(porCstMotivo).map(e => {
           const p = e.k.split(SEP_CHAVE);
-          return { cst: p[0], motivo: p[1], total: e.total };
+          return { imposto: p[0], cst: p[1], motivo: p[2], total: e.total };
         })),
         // Notas (C100) com inconsistência em algum C170, contando todas; mais inconsistências primeiro.
         porNota: Array.from(porNota.values()).map(n => ({
@@ -173,7 +180,7 @@
           const cstLinha = imp.pisCofins ? cst : cstIcms; // valor da coluna CST do CSV
           const bruto = f[C170[imp.base]];
           const motivo = conferirCstFormato(cst, imp.formato);
-          if (motivo) { add(linha, 'C170', imp.cst, f[C170[imp.cst]] || '', motivo, item, cstLinha, undefined, nota); return; }
+          if (motivo) { add(linha, 'C170', imp.cst, f[C170[imp.cst]] || '', motivo, item, cstLinha, undefined, nota, imp.nome); return; }
           let esperado = imp.tabela[cst.slice(-2)];
           let tipoOperacao = '';
           if (!esperado && imp.pisCofins) {
@@ -187,17 +194,17 @@
           if (!esperado) return;
           const base = parseValor(bruto);
           if (Number.isNaN(base)) {
-            add(linha, 'C170', imp.base, bruto || '', 'Base de cálculo não é número', item, cstLinha, undefined, nota);
+            add(linha, 'C170', imp.base, bruto || '', 'Base de cálculo não é número', item, cstLinha, undefined, nota, imp.nome);
           } else if (esperado === 'sem_base' && base !== 0) {
-            add(linha, 'C170', imp.base, bruto, 'CST ' + cst + ' não tributado, mas a base é maior que 0', item, cstLinha, TIPO_NAO_TRIBUTADO, nota);
+            add(linha, 'C170', imp.base, bruto, 'CST ' + cst + ' não tributado, mas a base é maior que 0', item, cstLinha, TIPO_NAO_TRIBUTADO, nota, imp.nome);
           } else if (esperado === 'exige_base' && !(base > 0)) {
-            add(linha, 'C170', imp.base, bruto || '0', 'CST ' + cst + ' tributado, mas a base é 0', item, cstLinha, TIPO_TRIBUTADO, nota);
+            add(linha, 'C170', imp.base, bruto || '0', 'CST ' + cst + ' tributado, mas a base é 0', item, cstLinha, TIPO_TRIBUTADO, nota, imp.nome);
           } else if (esperado === 'exige_base_analise' && !(base > 0)) {
             add(linha, 'C170', imp.base, bruto || '0',
-              'CST ' + cst + ' deve ter base maior que 0, mas a base é 0: analisar caso a caso (pode ser operação sem base)', item, cstLinha, TIPO_ANALISE, nota);
+              'CST ' + cst + ' deve ter base maior que 0, mas a base é 0: analisar caso a caso (pode ser operação sem base)', item, cstLinha, TIPO_ANALISE, nota, imp.nome);
           } else if (esperado === 'exige_base_operacao' && !(base > 0)) {
             add(linha, 'C170', imp.base, bruto || '0',
-              'CST ' + imp.nome + ' ' + cst + ' de ' + nomeOperacao + ' deve ter base maior que 0, mas a base é 0', item, cstLinha, tipoOperacao, nota);
+              'CST ' + imp.nome + ' ' + cst + ' de ' + nomeOperacao + ' deve ter base maior que 0, mas a base é 0', item, cstLinha, tipoOperacao, nota, imp.nome);
           }
         });
         if (semOperacao) contagem.pisCofinsSemOperacao++;
@@ -243,21 +250,32 @@
     return c.finish();
   }
 
-  const CABECALHO_CSV = 'linha;registro;campo;valor;motivo;item;CST;NF;serie;data;operacao;chave';
+  const CABECALHO_CSV = 'linha;registro;campo;valor;motivo;item;imposto;CST;NF;serie;data;operacao;chave';
   const CABECALHO_CSV_NOTAS = 'NF;serie;data;operacao;chave;quantidade_inconsistencias;motivos';
   const SEP_MOTIVOS = ' | ';
 
   // Campo de texto: sempre entre aspas duplas, aspas internas dobradas.
   function campoCsv(v) { return '"' + String(v === undefined || v === null ? '' : v).replace(/"/g, '""') + '"'; }
 
+  // Data do C100 (DDMMAAAA) para DD/MM/AAAA, que o Excel não trata como número. Vazia ou inválida fica como está.
+  function dataCsv(v) {
+    const t = String(v === undefined || v === null ? '' : v);
+    const m = /^(\d{2})(\d{2})(\d{4})$/.exec(t);
+    if (!m) return t;
+    const d = new Date(Date.UTC(+m[3], +m[2] - 1, +m[1]));
+    if (d.getUTCFullYear() !== +m[3] || d.getUTCMonth() !== +m[2] - 1 || d.getUTCDate() !== +m[1]) return t;
+    return m[1] + '/' + m[2] + '/' + m[3];
+  }
+
   function linhaCsv(i) {
     return i.linha + ';' + campoCsv(i.registro) + ';' + campoCsv(i.campo) + ';' + campoCsv(i.valor) + ';' +
-      campoCsv(i.motivo) + ';' + campoCsv(i.item) + ';' + campoCsv(i.cst) + ';' + campoCsv(i.nf) + ';' +
-      campoCsv(i.serie) + ';' + campoCsv(i.data) + ';' + campoCsv(i.operacao) + ';' + campoCsv(i.chave);
+      campoCsv(i.motivo) + ';' + campoCsv(i.item) + ';' + campoCsv(i.imposto) + ';' + campoCsv(i.cst) + ';' +
+      campoCsv(i.nf) + ';' + campoCsv(i.serie) + ';' + campoCsv(dataCsv(i.data)) + ';' + campoCsv(i.operacao) + ';' +
+      campoCsv(i.chave);
   }
 
   function linhaCsvNota(n) {
-    return campoCsv(n.nf) + ';' + campoCsv(n.serie) + ';' + campoCsv(n.data) + ';' + campoCsv(n.operacao) + ';' +
+    return campoCsv(n.nf) + ';' + campoCsv(n.serie) + ';' + campoCsv(dataCsv(n.data)) + ';' + campoCsv(n.operacao) + ';' +
       campoCsv(n.chave) + ';' + n.total + ';' + campoCsv((n.motivos || []).join(SEP_MOTIVOS));
   }
 
