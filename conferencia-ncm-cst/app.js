@@ -59,7 +59,7 @@
       const tr = el('tr');
       tr.append(el('td', 'num', String(i.linha)), el('td', null, i.registro), el('td', null, i.campo),
         el('td', 'val', i.valor === '' ? '(vazio)' : i.valor), el('td', null, i.motivo), el('td', null, i.item || '—'),
-        el('td', null, i.cst || '—'), el('td', null, i.nf || '—'), el('td', null, i.serie || '—'),
+        el('td', null, i.imposto || '—'), el('td', null, i.cst || '—'), el('td', null, i.nf || '—'), el('td', null, i.serie || '—'),
         el('td', null, fmtData(i.data)), el('td', null, fmtOperacao(i.operacao)));
       body.append(tr);
     });
@@ -90,7 +90,7 @@
   function renderResumo(r) {
     $('resumo-cst').hidden = r.total === 0;
     $('resumo-total').textContent = 'Total: ' + fmt(r.total) + ' inconsistência(s).';
-    fillRows('resumo-cst-body', r.porCst.map(e => [e.cst || '(sem CST)', e.total]));
+    fillRows('resumo-cst-body', r.porCst.map(e => [(e.imposto ? e.imposto + ' ' : '') + (e.cst || '(sem CST)'), e.total]));
     fillRows('resumo-motivo-body', r.porMotivo.map(e => [e.motivo, e.total]));
   }
 
