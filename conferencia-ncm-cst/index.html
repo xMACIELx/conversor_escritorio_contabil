@@ -29,6 +29,7 @@
         <span class="drop-main" id="drop-main">Arraste o arquivo .txt do SPED Fiscal aqui</span>
         <span class="drop-sub" id="drop-sub">ou clique para procurar no computador</span>
       </label>
+      <p class="note">A conferência cobre o <strong>ICMS</strong> e o <strong>PIS/COFINS</strong> (CST × base de cálculo, conforme a operação da nota) e aponta em quais notas (C100) estão as inconsistências.</p>
       <p id="status" class="note" role="status" aria-live="polite">Nenhum arquivo escolhido.</p>
     </section>
 
@@ -62,8 +63,30 @@
         </div>
       </div>
 
+      <div id="resumo-notas" class="resumo" hidden>
+        <h3>Notas com inconsistência</h3>
+        <p id="notas-total" class="resumo-total"></p>
+        <div class="table-wrap">
+          <table class="incons resumo-tab" id="notas">
+            <caption class="sr-only">Notas com inconsistência</caption>
+            <thead>
+              <tr>
+                <th scope="col">NF</th>
+                <th scope="col">Série</th>
+                <th scope="col">Data</th>
+                <th scope="col">Operação</th>
+                <th scope="col" class="num">Inconsistências</th>
+              </tr>
+            </thead>
+            <tbody id="notas-body"></tbody>
+          </table>
+        </div>
+        <p id="notas-truncated" class="note" hidden></p>
+      </div>
+
       <div id="csv-bar" class="csv-bar" hidden>
         <button id="csv" class="btn" type="button">Baixar CSV completo</button>
+        <button id="csv-notas" class="btn" type="button">Baixar CSV por nota</button>
         <span id="csv-note" class="note" role="status" aria-live="polite"></span>
       </div>
 
@@ -79,6 +102,10 @@
               <th scope="col">Motivo</th>
               <th scope="col">Item</th>
               <th scope="col">CST</th>
+              <th scope="col">NF</th>
+              <th scope="col">Série</th>
+              <th scope="col">Data</th>
+              <th scope="col">Operação</th>
             </tr>
           </thead>
           <tbody id="incons-body"></tbody>
