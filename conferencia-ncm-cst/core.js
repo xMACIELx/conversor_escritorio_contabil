@@ -45,10 +45,16 @@
     return null;
   }
 
+  const MOTIVO_CST_4_DIGITOS = 'CST com 4 dígitos: pode ser CSOSN do Simples Nacional, que não é esperado no SPED ' +
+    '(o lançamento segue a tributação do contribuinte, não a do fornecedor)';
+
   function conferirCstFormato(valor, formato) {
     const v = (valor || '').trim();
     if (v === '') return 'CST ausente';
-    if (!formato.test(v)) return 'CST com formato inválido';
+    if (!formato.test(v)) {
+      if (/^\d{4}$/.test(v)) return MOTIVO_CST_4_DIGITOS;
+      return 'CST com formato inválido';
+    }
     return null;
   }
 
@@ -85,7 +91,7 @@
           const cst = (f[C170[imp.cst]] || '').trim();
           const motivo = conferirCstFormato(cst, imp.formato);
           if (motivo) { add(linha, 'C170', imp.cst, f[C170[imp.cst]] || '', motivo, item); return; }
-          const esperado = imp.tabela[cst];
+          const esperado = imp.tabela[cst.slice(-2)];
           if (!esperado) return;
           const base = parseValor(f[C170[imp.base]]);
           if (Number.isNaN(base)) {
@@ -94,6 +100,9 @@
             add(linha, 'C170', imp.base, f[C170[imp.base]], 'CST ' + cst + ' não tributado, mas a base é maior que 0', item);
           } else if (esperado === 'exige_base' && !(base > 0)) {
             add(linha, 'C170', imp.base, f[C170[imp.base]] || '0', 'CST ' + cst + ' tributado, mas a base é 0', item);
+          } else if (esperado === 'exige_base_analise' && !(base > 0)) {
+            add(linha, 'C170', imp.base, f[C170[imp.base]] || '0',
+              'CST ' + cst + ' deve ter base maior que 0, mas a base é 0: analisar caso a caso (pode ser operação sem base)', item);
           }
         });
       }

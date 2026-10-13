@@ -4,16 +4,22 @@
   // ---- Configuração da ferramenta Conferência de NCM e CST ----
   // Só dados. A regra fiscal é do escritório: os agentes não decidem o que entra aqui.
 
-  // PENDENTE DE VALIDAÇÃO DO PEDRO. Enquanto for false, a conferência "base × CST" não aponta nada
-  // (a tabela abaixo está vazia de propósito) e o resultado traz regraBasePendente = true.
-  const REGRA_BASE_VALIDADA = false;
+  // Regra base × CST de ICMS validada pela fiscal da MAC. Quando for false, a conferência de base não
+  // é considerada ativa e o resultado traz regraBasePendente = true (a interface mostra o aviso amarelo).
+  const REGRA_BASE_VALIDADA = true;
 
-  // Tabela CST -> o que se espera da base de cálculo:
-  //   'sem_base'  : CST isento / não tributado, base deve ser 0
-  //   'exige_base': CST tributado, base deve ser maior que 0
-  // CST fora da tabela não é conferido (CSTs ambíguos, como diferimento e redução de base, ficam de fora
-  // até o Pedro decidir). Preencher depois da validação, por exemplo: { '040': 'sem_base', '000': 'exige_base' }.
-  const BASE_POR_CST_ICMS = {};
+  // Tabela CST -> o que se espera da base de cálculo. A chave são os 2 últimos dígitos do CST
+  // (no ICMS, o CST tem origem + 2 dígitos; a origem não entra na regra).
+  //   'sem_base'           : base deve ser 0
+  //   'exige_base'         : base deve ser maior que 0
+  //   'exige_base_analise' : como 'exige_base', mas base 0 pode ser legítima; vai para análise caso a caso
+  // CST fora da tabela não é conferido.
+  const BASE_POR_CST_ICMS = {
+    '00': 'exige_base', '20': 'exige_base', '51': 'exige_base_analise', '90': 'exige_base_analise',
+    '10': 'sem_base', '30': 'sem_base', '40': 'sem_base', '41': 'sem_base',
+    '50': 'sem_base', '60': 'sem_base', '70': 'sem_base'
+  };
+  // PIS/COFINS: conferência equivalente ainda não decidida; tabela vazia de propósito.
   const BASE_POR_CST_PIS_COFINS = {};
 
   // Formato dos códigos (só formato; não confere se o código existe nas tabelas oficiais).
