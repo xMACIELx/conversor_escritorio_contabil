@@ -6,6 +6,7 @@
   // Acima disso a tabela mostra só as primeiras linhas; o total continua exato no resumo.
   const MAX_ROWS = 2000;
   let running = false;
+  let current = null; // resultado exibido: base do CSV completo
 
   function el(tag, cls, text) {
     const e = document.createElement(tag);
@@ -42,19 +43,59 @@
     res.inconsistencias.slice(0, MAX_ROWS).forEach(i => {
       const tr = el('tr');
       tr.append(el('td', 'num', String(i.linha)), el('td', null, i.registro), el('td', null, i.campo),
-        el('td', 'val', i.valor === '' ? '(vazio)' : i.valor), el('td', null, i.motivo), el('td', null, i.item || '—'));
+        el('td', 'val', i.valor === '' ? '(vazio)' : i.valor), el('td', null, i.motivo), el('td', null, i.item || '—'),
+        el('td', null, i.cst || '—'));
       body.append(tr);
     });
     $('table-wrap').hidden = res.total === 0;
     const tr = $('truncated');
     tr.hidden = res.total <= MAX_ROWS;
-    tr.textContent = 'Mostrando as primeiras ' + fmt(MAX_ROWS) + ' de ' + fmt(res.total) + ' inconsistências.';
+    tr.textContent = 'Mostrando as primeiras ' + fmt(MAX_ROWS) + ' de ' + fmt(res.total) +
+      ' inconsistências. O CSV traz todas.';
+
+    renderResumo(res.resumo);
+    current = { inconsistencias: res.inconsistencias, name };
+    $('csv-bar').hidden = res.total === 0;
+    $('csv-note').textContent = '';
+  }
+
+  function fillRows(id, linhas) {
+    const body = $(id);
+    body.textContent = '';
+    linhas.forEach(([rotulo, total]) => {
+      const tr = el('tr');
+      tr.append(el('td', null, rotulo), el('td', 'num', fmt(total)));
+      body.append(tr);
+    });
+  }
+
+  // Contagens do core, sobre todas as inconsistências (não só as 2.000 exibidas).
+  function renderResumo(r) {
+    $('resumo-cst').hidden = r.total === 0;
+    $('resumo-total').textContent = 'Total: ' + fmt(r.total) + ' inconsistência(s).';
+    fillRows('resumo-cst-body', r.porCst.map(e => [e.cst || '(sem CST)', e.total]));
+    fillRows('resumo-motivo-body', r.porMotivo.map(e => [e.motivo, e.total]));
+  }
+
+  function downloadCsv() {
+    if (!current) return;
+    const blob = new Blob(Conferencia.gerarCsvPartes(current.inconsistencias), { type: 'text/csv;charset=utf-8' });
+    const outName = current.name.replace(/\.[^.]*$/, '') + '_inconsistencias.csv';
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = outName;
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    $('csv-note').textContent = 'Arquivo gerado: ' + outName + ' (' + fmt(current.inconsistencias.length) + ' linhas).';
   }
 
   async function run(file) {
     if (!file || running) return;
     running = true;
     $('result').hidden = true;
+    current = null;
     $('drop-main').textContent = file.name;
     $('drop-sub').textContent = 'Clique ou arraste outro arquivo para trocar';
     try {
@@ -84,6 +125,7 @@
     }
   }
 
+  $('csv').addEventListener('click', downloadCsv);
   const drop = $('drop');
   $('file').addEventListener('change', e => { run(e.target.files[0]); e.target.value = ''; });
   drop.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('file').click(); } });

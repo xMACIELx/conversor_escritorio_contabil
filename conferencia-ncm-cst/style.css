@@ -33,4 +33,13 @@ h2 b {
 .incons td.num, .incons th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .incons td.val { font-family: Consolas, "Courier New", monospace; overflow-wrap: anywhere; }
 
+.resumo { margin-top: 14px; }
+.resumo h3 { font-size: 1rem; margin: 0 0 6px; }
+.resumo-total { margin: 0 0 10px; font-weight: 600; }
+.resumo-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; align-items: start; }
+.resumo-grid .table-wrap { margin-top: 0; }
+.resumo-tab caption { text-align: left; font-weight: 600; padding: 6px 12px; background: var(--card); }
+.csv-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 14px; }
+.csv-bar .note { margin: 0; }
+
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

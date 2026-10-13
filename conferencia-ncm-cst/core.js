@@ -58,18 +58,56 @@
     return null;
   }
 
+  // Tipos de motivo sem o texto variável (o CST entra como dimensão própria do resumo).
+  const TIPO_NAO_TRIBUTADO = 'CST não tributado, mas a base é maior que 0';
+  const TIPO_TRIBUTADO = 'CST tributado, mas a base é 0';
+  const TIPO_ANALISE = 'CST deve ter base maior que 0, mas a base é 0: analisar caso a caso';
+
+  const SEP_CHAVE = '\u0000';
+
+  function ordenar(lista) {
+    return lista.sort((a, b) => b.total - a.total || (a.cst || '').localeCompare(b.cst || '') ||
+      (a.motivo || '').localeCompare(b.motivo || ''));
+  }
+
   // options.config substitui a configuração (usado nos testes). Cada inconsistência:
-  // { linha, registro, campo, valor, motivo, item } (linha é 1-based, posição no arquivo).
+  // { linha, registro, campo, valor, motivo, item, cst } (linha é 1-based, posição no arquivo).
+  // cst = CST de ICMS do C170 como aparece no arquivo; vazio quando a inconsistência não tem CST
+  // (NCM do 0200 e item sem cadastro no 0200).
   function createChecker(options) {
     const cfg = Object.assign({}, Config, (options && options.config) || {});
     const lista = impostos(cfg);
     const itens = new Set();
     const inconsistencias = [];
+    const porCst = new Map();
+    const porMotivo = new Map();
+    const porCstMotivo = new Map();
     const contagem = { linhas: 0, r0200: 0, c170: 0 };
     let resto = '';
 
-    function add(linha, registro, campo, valor, motivo, item) {
-      inconsistencias.push({ linha, registro, campo, valor: valor === undefined ? '' : valor, motivo, item });
+    function soma(mapa, chave) { mapa.set(chave, (mapa.get(chave) || 0) + 1); }
+
+    // tipo = motivo sem o texto variável; o resumo conta todas as inconsistências, não só as exibidas.
+    function add(linha, registro, campo, valor, motivo, item, cst, tipo) {
+      cst = cst || '';
+      inconsistencias.push({ linha, registro, campo, valor: valor === undefined ? '' : valor, motivo, item, cst });
+      tipo = tipo || motivo;
+      soma(porCst, cst);
+      soma(porMotivo, tipo);
+      soma(porCstMotivo, cst + SEP_CHAVE + tipo);
+    }
+
+    function resumo() {
+      const lista = mapa => Array.from(mapa, ([k, total]) => ({ k, total }));
+      return {
+        total: inconsistencias.length,
+        porCst: ordenar(lista(porCst).map(e => ({ cst: e.k, total: e.total }))),
+        porMotivo: ordenar(lista(porMotivo).map(e => ({ motivo: e.k, total: e.total }))),
+        porCstMotivo: ordenar(lista(porCstMotivo).map(e => {
+          const p = e.k.split(SEP_CHAVE);
+          return { cst: p[0], motivo: p[1], total: e.total };
+        }))
+      };
     }
 
     function feedLine(texto, linha) {
@@ -86,23 +124,24 @@
       } else if (reg === 'C170') {
         contagem.c170++;
         const item = f[C170.COD_ITEM] || '';
-        if (!itens.has(item)) add(linha, 'C170', 'COD_ITEM', item, 'Item sem cadastro no registro 0200 (NCM não conferida)', item);
+        const cstItem = (f[C170.CST_ICMS] || '').trim();
+        if (!itens.has(item)) add(linha, 'C170', 'COD_ITEM', item, 'Item sem cadastro no registro 0200 (NCM não conferida)', item, '');
         lista.forEach(imp => {
           const cst = (f[C170[imp.cst]] || '').trim();
           const motivo = conferirCstFormato(cst, imp.formato);
-          if (motivo) { add(linha, 'C170', imp.cst, f[C170[imp.cst]] || '', motivo, item); return; }
+          if (motivo) { add(linha, 'C170', imp.cst, f[C170[imp.cst]] || '', motivo, item, cstItem); return; }
           const esperado = imp.tabela[cst.slice(-2)];
           if (!esperado) return;
           const base = parseValor(f[C170[imp.base]]);
           if (Number.isNaN(base)) {
-            add(linha, 'C170', imp.base, f[C170[imp.base]] || '', 'Base de cálculo não é número', item);
+            add(linha, 'C170', imp.base, f[C170[imp.base]] || '', 'Base de cálculo não é número', item, cstItem);
           } else if (esperado === 'sem_base' && base !== 0) {
-            add(linha, 'C170', imp.base, f[C170[imp.base]], 'CST ' + cst + ' não tributado, mas a base é maior que 0', item);
+            add(linha, 'C170', imp.base, f[C170[imp.base]], 'CST ' + cst + ' não tributado, mas a base é maior que 0', item, cstItem, TIPO_NAO_TRIBUTADO);
           } else if (esperado === 'exige_base' && !(base > 0)) {
-            add(linha, 'C170', imp.base, f[C170[imp.base]] || '0', 'CST ' + cst + ' tributado, mas a base é 0', item);
+            add(linha, 'C170', imp.base, f[C170[imp.base]] || '0', 'CST ' + cst + ' tributado, mas a base é 0', item, cstItem, TIPO_TRIBUTADO);
           } else if (esperado === 'exige_base_analise' && !(base > 0)) {
             add(linha, 'C170', imp.base, f[C170[imp.base]] || '0',
-              'CST ' + cst + ' deve ter base maior que 0, mas a base é 0: analisar caso a caso (pode ser operação sem base)', item);
+              'CST ' + cst + ' deve ter base maior que 0, mas a base é 0: analisar caso a caso (pode ser operação sem base)', item, cstItem, TIPO_ANALISE);
           }
         });
       }
@@ -125,6 +164,7 @@
       return {
         inconsistencias,
         total: inconsistencias.length,
+        resumo: resumo(),
         linhasLidas: contagem.linhas,
         itensCadastrados: itens.size,
         registros0200: contagem.r0200,
@@ -142,7 +182,34 @@
     return c.finish();
   }
 
-  const api = { createChecker, checkText, parseValor, conferirNcm, conferirCstFormato };
+  const CABECALHO_CSV = 'linha;registro;campo;valor;motivo;item;CST';
+
+  // Campo de texto: sempre entre aspas duplas, aspas internas dobradas.
+  function campoCsv(v) { return '"' + String(v === undefined || v === null ? '' : v).replace(/"/g, '""') + '"'; }
+
+  function linhaCsv(i) {
+    return i.linha + ';' + campoCsv(i.registro) + ';' + campoCsv(i.campo) + ';' + campoCsv(i.valor) + ';' +
+      campoCsv(i.motivo) + ';' + campoCsv(i.item) + ';' + campoCsv(i.cst);
+  }
+
+  // CSV com TODAS as inconsistências, em partes (strings) para não montar um texto gigante de uma vez:
+  // new Blob(partes, { type: 'text/csv;charset=utf-8' }). Separador ";", CRLF, BOM UTF-8 no início
+  // (primeira parte), cabeçalho na primeira linha. linhasPorParte é opcional (padrão 5.000).
+  function gerarCsvPartes(inconsistencias, linhasPorParte) {
+    const n = linhasPorParte > 0 ? linhasPorParte : 5000;
+    const partes = [];
+    let buf = ['﻿' + CABECALHO_CSV];
+    for (let k = 0; k < inconsistencias.length; k++) {
+      buf.push(linhaCsv(inconsistencias[k]));
+      if (buf.length >= n) { partes.push(buf.join('\r\n') + '\r\n'); buf = []; }
+    }
+    if (buf.length) partes.push(buf.join('\r\n') + '\r\n');
+    return partes;
+  }
+
+  function gerarCsv(inconsistencias) { return gerarCsvPartes(inconsistencias).join(''); }
+
+  const api = { createChecker, checkText, parseValor, conferirNcm, conferirCstFormato, gerarCsvPartes, gerarCsv };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.Conferencia = api;

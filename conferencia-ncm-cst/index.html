@@ -41,6 +41,32 @@
       <div id="banner" class="banner" role="status"></div>
       <p id="summary" class="note"></p>
 
+      <div id="resumo-cst" class="resumo" hidden>
+        <h3>Resumo das inconsistências</h3>
+        <p id="resumo-total" class="resumo-total"></p>
+        <div class="resumo-grid">
+          <div class="table-wrap">
+            <table class="incons resumo-tab">
+              <caption>Por CST</caption>
+              <thead><tr><th scope="col">CST</th><th scope="col" class="num">Quantidade</th></tr></thead>
+              <tbody id="resumo-cst-body"></tbody>
+            </table>
+          </div>
+          <div class="table-wrap">
+            <table class="incons resumo-tab">
+              <caption>Por motivo</caption>
+              <thead><tr><th scope="col">Motivo</th><th scope="col" class="num">Quantidade</th></tr></thead>
+              <tbody id="resumo-motivo-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div id="csv-bar" class="csv-bar" hidden>
+        <button id="csv" class="btn" type="button">Baixar CSV completo</button>
+        <span id="csv-note" class="note" role="status" aria-live="polite"></span>
+      </div>
+
       <div id="table-wrap" class="table-wrap" hidden>
         <table class="incons" id="incons">
           <caption class="sr-only">Inconsistências encontradas</caption>
@@ -52,6 +78,7 @@
               <th scope="col">Valor</th>
               <th scope="col">Motivo</th>
               <th scope="col">Item</th>
+              <th scope="col">CST</th>
             </tr>
           </thead>
           <tbody id="incons-body"></tbody>
