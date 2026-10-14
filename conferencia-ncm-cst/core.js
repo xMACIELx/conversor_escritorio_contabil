@@ -5,12 +5,15 @@
  * Registros lidos (campos separados por "|", índice 0 é vazio por causa do "|" inicial):
  *   0200 cadastro do item:  [2] COD_ITEM | [8] COD_NCM
  *   C100 nota (NF):         [2] IND_OPER (0 entrada, 1 saída) | [7] SER | [8] NUM_DOC | [9] CHV_NFE | [10] DT_DOC
- *   C170 item da nota:      [2] NUM_ITEM | [3] COD_ITEM | [10] CST_ICMS | [11] CFOP | [13] VL_BC_ICMS
+ *   0450 informação complementar: [2] COD_INF | [3] TXT
+ *   C110 informação complementar da nota: [2] COD_INF (consulta o 0450) | [3] TXT_COMPL
+ *   C170 item da nota:     [2] NUM_ITEM | [3] COD_ITEM | [10] CST_ICMS | [11] CFOP | [13] VL_BC_ICMS
  *                           [25] CST_PIS | [26] VL_BC_PIS | [27] ALIQ_PIS | [30] VL_PIS
  *                           [31] CST_COFINS | [32] VL_BC_COFINS | [33] ALIQ_COFINS | [36] VL_COFINS
  *
  * No arquivo, o C100 (a nota) vem seguido dos seus C170 (itens): o C100 corrente vale para os C170 seguintes
- * até o próximo C100 (ou o fim do bloco C, C990). C170 sem C100 antes fica com os campos da nota vazios.
+ * até o próximo C100 (ou o fim do bloco C, C990). Os C110 da nota vêm entre o C100 e os C170 e o 0450 vem no bloco 0,
+ * antes das notas, então o texto do C110 é resolvido na hora, sem segunda passada. C170 sem C100 antes fica com os campos da nota vazios.
  *
  * O arquivo pode passar de 80 MB: use createChecker() e alimente em blocos (feedChunk). Só guarda os
  * códigos de item do 0200 e a lista de inconsistências, nunca o texto inteiro.
@@ -21,6 +24,8 @@
   const Config = typeof module !== 'undefined' && module.exports ? require('./config.js') : root.ConferenciaConfig;
 
   const R0200 = { COD_ITEM: 2, DESCR_ITEM: 3, COD_NCM: 8 };
+  const R0450 = { COD_INF: 2, TXT: 3 };
+  const C110 = { COD_INF: 2, TXT_COMPL: 3 };
   const C100 = { IND_OPER: 2, SER: 7, NUM_DOC: 8, CHV_NFE: 9, DT_DOC: 10 };
   const C170 = {
     COD_ITEM: 3, CST_ICMS: 10, CFOP: 11, VL_BC_ICMS: 13,
@@ -80,6 +85,13 @@
   // ICMS em CFOP sem base (5152, 5929), para qualquer CST.
   const TIPO_CFOP_SEM_BASE = 'CFOP 5152/5929 não deveria ter base de ICMS, mas a base é > 0';
 
+  // ICMS com CST final 90 de entrada e base 0, sem crédito de ICMS do Simples Nacional no C110/0450.
+  const TIPO_90_SEM_CREDITO_C110 = 'CST 90 de entrada com base 0 e sem informação de crédito de ICMS no C110/0450 (fornecedor do Simples Nacional?)';
+  const TIPO_90_SEM_C110 = 'CST 90 de entrada com base 0 e sem C110 (sem informação de crédito)';
+
+  // Texto sem acento e em maiúsculas, para casar o padrão de crédito de ICMS.
+  function normalizarTexto(t) { return String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase(); }
+
   // CST de alíquota zero de PIS/COFINS: a mensagem do motivo mostra a alíquota e o valor do imposto preenchidos.
   const CST_ALIQUOTA_ZERO = '06';
 
@@ -118,7 +130,10 @@
     const porCstMotivo = new Map();
     const porNota = new Map(); // chave = linha do C100; só notas com inconsistência
     const contagem = { linhas: 0, r0200: 0, c170: 0, c100: 0, c170SemC100: 0, pisCofinsSemOperacao: 0 };
+    const textos0450 = new Map(); // COD_INF -> TXT do 0450
     let nota = null; // C100 corrente: { linha, nf, serie, data, operacao, chave }
+    let notaC110 = { tem: false, textos: [] }; // C110 da nota corrente: textos do 0450 consultado e TXT_COMPL
+    let creditoSimples = 0; // itens de CST 90 de entrada, base 0, aceitos por trazerem o crédito no C110/0450
     let resto = '';
     let cfopC170 = ''; // CFOP do C170 em conferência, gravado em cada inconsistência dele
 
@@ -181,6 +196,9 @@
       const lista = mapa => Array.from(mapa, ([k, total]) => ({ k, total }));
       return {
         total: inconsistencias.length,
+        // Informativo, fora do total: itens de CST 90 de entrada com base 0 aceitos por terem o crédito de ICMS do
+        // Simples Nacional informado no C110/0450. Não entram nas inconsistências nem no CSV.
+        cst90CreditoSimples: creditoSimples,
         // NCMs com mais inconsistências (até 30) e o total de NCMs distintos com inconsistência.
         ncmsTop: rankingNcms(),
         totalNcmsComInconsistencia: incPorNcm.size,
@@ -223,8 +241,16 @@
         infoItem.set(item, { ncm, descricao: f[R0200.DESCR_ITEM] || '' });
         const motivo = conferirNcm(f[R0200.COD_NCM], cfg.FORMATO_NCM);
         if (motivo) add(linha, '0200', 'COD_NCM', f[R0200.COD_NCM] || '', motivo, item);
+      } else if (reg === '0450') {
+        textos0450.set((f[R0450.COD_INF] || '').trim(), f[R0450.TXT] || '');
+      } else if (reg === 'C110') {
+        notaC110.tem = true;
+        const txt0450 = textos0450.get((f[C110.COD_INF] || '').trim());
+        if (txt0450) notaC110.textos.push(txt0450);
+        if (f[C110.TXT_COMPL]) notaC110.textos.push(f[C110.TXT_COMPL]);
       } else if (reg === 'C100') {
         contagem.c100++;
+        notaC110 = { tem: false, textos: [] };
         nota = {
           linha,
           nf: (f[C100.NUM_DOC] || '').trim(), serie: (f[C100.SER] || '').trim(), data: (f[C100.DT_DOC] || '').trim(),
@@ -232,6 +258,7 @@
         };
       } else if (reg === 'C990') {
         nota = null; // fim do bloco C
+        notaC110 = { tem: false, textos: [] };
       } else if (reg === 'C170') {
         contagem.c170++;
         if (!nota) contagem.c170SemC100++;
@@ -267,6 +294,8 @@
             esperado = imp.tabela[cst.slice(-2)];
             // CFOP sem base de ICMS vale para qualquer CST (inclusive os fora da tabela).
             if (cfg.CFOPS_ICMS_SEM_BASE.includes(cfopC170)) esperado = 'cfop_sem_base';
+            // Devolução de compra com ST (5411) com CST final 10 pode ter base própria (espelha a nota de compra).
+            else if (esperado === 'sem_base' && cst.slice(-2) === '10' && cfg.CFOPS_DEVOLUCAO_COM_BASE.includes(cfopC170)) esperado = null;
           }
           if (!esperado) return;
           const base = parseValor(bruto);
@@ -284,7 +313,18 @@
             if (cfg.CFOPS_ICMS_90_SEM_BASE.includes(cfopC170)) {
               if (base > 0) add(linha, 'C170', imp.base, bruto, 'CST ' + cst + ' com CFOP ' + cfopLabel + ' não deveria ter base', item, cstLinha, TIPO_90_SEM_BASE, nota, imp.nome);
             } else if (!(base > 0)) {
-              add(linha, 'C170', imp.base, bruto || '0', 'CST ' + cst + ' com CFOP ' + cfopLabel + ' deveria ser tributado, mas a base é 0', item, cstLinha, TIPO_90_TRIBUTADO, nota, imp.nome);
+              if (/^[123]/.test(cfopC170)) {
+                // Entrada: fornecedor do Simples Nacional informa o crédito no texto complementar, não no C170.
+                if (notaC110.textos.some(t => cfg.PADRAO_CREDITO_ICMS_SIMPLES.test(normalizarTexto(t)))) {
+                  creditoSimples++;
+                } else if (notaC110.tem) {
+                  add(linha, 'C170', imp.base, bruto || '0', 'CST ' + cst + ' com CFOP ' + cfopLabel + ', base 0 e sem informação de crédito de ICMS no C110/0450 (fornecedor do Simples Nacional?)', item, cstLinha, TIPO_90_SEM_CREDITO_C110, nota, imp.nome);
+                } else {
+                  add(linha, 'C170', imp.base, bruto || '0', 'CST ' + cst + ' com CFOP ' + cfopLabel + ', base 0 e sem C110 (sem informação de crédito)', item, cstLinha, TIPO_90_SEM_C110, nota, imp.nome);
+                }
+              } else {
+                add(linha, 'C170', imp.base, bruto || '0', 'CST ' + cst + ' com CFOP ' + cfopLabel + ' deveria ser tributado, mas a base é 0', item, cstLinha, TIPO_90_TRIBUTADO, nota, imp.nome);
+              }
             }
           } else if (esperado === 'exige_base_analise' && !(base > 0)) {
             add(linha, 'C170', imp.base, bruto || '0',

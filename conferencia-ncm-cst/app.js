@@ -62,7 +62,9 @@
     $('summary').textContent = fmt(res.linhasLidas) + ' linhas lidas, ' + fmt(res.registros0200) +
       ' itens no 0200 e ' + fmt(res.registrosC170) + ' itens de nota (C170) em ' + fmt(res.registrosC100) + ' nota(s) (C100).' +
       (res.c170PisCofinsSemOperacao ? ' PIS/COFINS não conferido em ' + fmt(res.c170PisCofinsSemOperacao) +
-        ' item(ns) sem nota (C100) para indicar a operação.' : '');
+        ' item(ns) sem nota (C100) para indicar a operação.' : '') +
+      (res.resumo.cst90CreditoSimples ? ' ' + fmt(res.resumo.cst90CreditoSimples) +
+        ' item(ns) de CST 090 com crédito do Simples Nacional informado no C110/0450 (aceitos, fora do total de inconsistências).' : '');
 
     renderResumo(res.resumo);
     renderNcmsTop(res.resumo);
