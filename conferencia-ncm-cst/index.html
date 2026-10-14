@@ -63,6 +63,25 @@
         </div>
       </div>
 
+      <div id="resumo-ncms" class="resumo" hidden>
+        <h3>NCMs com mais inconsistências</h3>
+        <p id="ncms-total" class="resumo-total"></p>
+        <div class="table-wrap">
+          <table class="incons resumo-tab" id="ncms-top">
+            <caption class="sr-only">NCMs com mais inconsistências</caption>
+            <thead>
+              <tr>
+                <th scope="col">NCM</th>
+                <th scope="col">Produto</th>
+                <th scope="col" class="num">Total</th>
+                <th scope="col">Por imposto e CST</th>
+              </tr>
+            </thead>
+            <tbody id="ncms-body"></tbody>
+          </table>
+        </div>
+      </div>
+
       <div id="resumo-notas" class="resumo" hidden>
         <h3>Notas com inconsistência</h3>
         <p id="notas-total" class="resumo-total"></p>
@@ -103,6 +122,8 @@
               <th scope="col">Valor</th>
               <th scope="col">Motivo</th>
               <th scope="col">Item</th>
+              <th scope="col">NCM</th>
+              <th scope="col">Produto</th>
               <th scope="col">Imposto</th>
               <th scope="col">CST</th>
               <th scope="col">NF</th>
