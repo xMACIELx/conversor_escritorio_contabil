@@ -6,7 +6,8 @@
  *   0200 cadastro do item:  [2] COD_ITEM | [8] COD_NCM
  *   C100 nota (NF):         [2] IND_OPER (0 entrada, 1 saída) | [7] SER | [8] NUM_DOC | [9] CHV_NFE | [10] DT_DOC
  *   C170 item da nota:      [2] NUM_ITEM | [3] COD_ITEM | [10] CST_ICMS | [13] VL_BC_ICMS
- *                           [25] CST_PIS | [26] VL_BC_PIS | [31] CST_COFINS | [32] VL_BC_COFINS
+ *                           [25] CST_PIS | [26] VL_BC_PIS | [27] ALIQ_PIS | [30] VL_PIS
+ *                           [31] CST_COFINS | [32] VL_BC_COFINS | [33] ALIQ_COFINS | [36] VL_COFINS
  *
  * No arquivo, o C100 (a nota) vem seguido dos seus C170 (itens): o C100 corrente vale para os C170 seguintes
  * até o próximo C100 (ou o fim do bloco C, C990). C170 sem C100 antes fica com os campos da nota vazios.
@@ -23,15 +24,16 @@
   const C100 = { IND_OPER: 2, SER: 7, NUM_DOC: 8, CHV_NFE: 9, DT_DOC: 10 };
   const C170 = {
     COD_ITEM: 3, CST_ICMS: 10, VL_BC_ICMS: 13,
-    CST_PIS: 25, VL_BC_PIS: 26, CST_COFINS: 31, VL_BC_COFINS: 32
+    CST_PIS: 25, VL_BC_PIS: 26, ALIQ_PIS: 27, VL_PIS: 30,
+    CST_COFINS: 31, VL_BC_COFINS: 32, ALIQ_COFINS: 33, VL_COFINS: 36
   };
 
   // Impostos conferidos no C170: campo do CST, campo da base, formato e tabela de base.
   function impostos(cfg) {
     return [
       { cst: 'CST_ICMS', base: 'VL_BC_ICMS', nome: 'ICMS', formato: cfg.FORMATO_CST_ICMS, tabela: cfg.BASE_POR_CST_ICMS },
-      { cst: 'CST_PIS', base: 'VL_BC_PIS', nome: 'PIS', pisCofins: true, formato: cfg.FORMATO_CST_PIS_COFINS, tabela: cfg.BASE_POR_CST_PIS_COFINS },
-      { cst: 'CST_COFINS', base: 'VL_BC_COFINS', nome: 'COFINS', pisCofins: true, formato: cfg.FORMATO_CST_PIS_COFINS, tabela: cfg.BASE_POR_CST_PIS_COFINS }
+      { cst: 'CST_PIS', base: 'VL_BC_PIS', aliq: 'ALIQ_PIS', valor: 'VL_PIS', nome: 'PIS', pisCofins: true, formato: cfg.FORMATO_CST_PIS_COFINS, tabela: cfg.BASE_POR_CST_PIS_COFINS },
+      { cst: 'CST_COFINS', base: 'VL_BC_COFINS', aliq: 'ALIQ_COFINS', valor: 'VL_COFINS', nome: 'COFINS', pisCofins: true, formato: cfg.FORMATO_CST_PIS_COFINS, tabela: cfg.BASE_POR_CST_PIS_COFINS }
     ];
   }
 
@@ -71,7 +73,10 @@
   const TIPO_TRIBUTADO = 'CST tributado, mas a base é 0';
   const TIPO_ANALISE = 'CST deve ter base maior que 0, mas a base é 0: analisar caso a caso';
 
-  const SEP_CHAVE = '\u0000';
+  // CST de alíquota zero de PIS/COFINS: a mensagem do motivo mostra a alíquota e o valor do imposto preenchidos.
+  const CST_ALIQUOTA_ZERO = '06';
+
+  const SEP_CHAVE ='\u0000';
   const SEP_MOTIVOS = ' | ';
   const NCMS_NO_RANKING = 30;
 
@@ -88,6 +93,8 @@
   // vazio quando a inconsistência não tem CST (NCM do 0200 e item sem cadastro no 0200).
   // nf, serie, data, operacao (IND_OPER: 0 entrada, 1 saída) e chave vêm do C100 corrente; vazios sem C100
   // (e sempre vazios nas do 0200).
+  // aliquota e valor_imposto (ALIQ_ e VL_ do PIS ou COFINS, como estão no C170): só nas inconsistências de base de
+  // CST 06 (alíquota zero); vazios nas demais.
   // ncm (COD_NCM) e descricao (DESCR_ITEM) vêm do 0200 do COD_ITEM, só nas inconsistências do C170; vazios
   // quando o item não tem 0200 e nas inconsistências do próprio 0200.
   function createChecker(options) {
@@ -109,14 +116,17 @@
     function soma(mapa, chave) { mapa.set(chave, (mapa.get(chave) || 0) + 1); }
 
     // tipo = motivo sem o texto variável; o resumo conta todas as inconsistências, não só as exibidas.
-    function add(linha, registro, campo, valor, motivo, item, cst, tipo, daNota, imposto) {
+    function add(linha, registro, campo, valor, motivo, item, cst, tipo, daNota, imposto, aliquota, valorImposto) {
       cst = cst || '';
       imposto = imposto || '';
+      aliquota = aliquota || '';
+      valorImposto = valorImposto || '';
       tipo = tipo || motivo;
       const ctx = daNota || CAMPOS_NOTA_VAZIOS;
       const produto = registro === 'C170' ? infoItem.get(item) : undefined;
       inconsistencias.push({
         linha, registro, campo, valor: valor === undefined ? '' : valor, motivo, item, imposto, cst,
+        aliquota, valor_imposto: valorImposto,
         nf: ctx.nf, serie: ctx.serie, data: ctx.data, operacao: ctx.operacao, chave: ctx.chave,
         ncm: produto ? produto.ncm : '', descricao: produto ? produto.descricao : ''
       });
@@ -258,8 +268,18 @@
             add(linha, 'C170', imp.base, bruto || '0',
               'CST ' + cst + ' deve ter base maior que 0, mas a base é 0: analisar caso a caso (pode ser operação sem base)', item, cstLinha, TIPO_ANALISE, nota, imp.nome);
           } else if (esperado === 'sem_base_operacao' && base > 0) {
-            add(linha, 'C170', imp.base, bruto, 'CST ' + imp.nome + ' ' + cst + ' de ' + nomeOperacao + ' não deve ter base, mas a base é ' + bruto.trim(),
-              item, cstLinha, tipoOperacao, nota, imp.nome);
+            let motivoBase = 'CST ' + imp.nome + ' ' + cst + ' de ' + nomeOperacao + ' não deve ter base, mas a base é ' + bruto.trim();
+            let aliquota = '', valorImposto = '';
+            if (cst === CST_ALIQUOTA_ZERO) {
+              // Só com valor do imposto > 0 a mensagem fala em imposto preenchido; o tipo (e a contagem do resumo) não muda.
+              aliquota = (f[C170[imp.aliq]] || '').trim();
+              valorImposto = (f[C170[imp.valor]] || '').trim();
+              if (parseValor(valorImposto) > 0) {
+                motivoBase = 'CST 06 (alíquota zero) com base > 0 e alíquota ' + (aliquota || '0') + '% / valor R$ ' + valorImposto + ' de ' + imp.nome +
+                  ' preenchidos: CST de alíquota zero não deveria ter base nem imposto';
+              }
+            }
+            add(linha, 'C170', imp.base, bruto, motivoBase, item, cstLinha, tipoOperacao, nota, imp.nome, aliquota, valorImposto);
           } else if (esperado === 'exige_base_operacao' && !(base > 0)) {
             add(linha, 'C170', imp.base, bruto || '0',
               'CST ' + imp.nome + ' ' + cst + ' de ' + nomeOperacao + ' deve ter base maior que 0, mas a base é 0', item, cstLinha, tipoOperacao, nota, imp.nome);
@@ -319,7 +339,7 @@
     return c.finish();
   }
 
-  const CABECALHO_CSV = 'linha;registro;campo;valor;motivo;item;imposto;CST;NF;serie;data;operacao;chave;ncm;descricao';
+  const CABECALHO_CSV = 'linha;registro;campo;valor;motivo;item;imposto;CST;NF;serie;data;operacao;chave;ncm;descricao;aliquota;valor_imposto';
   const CABECALHO_CSV_NOTAS = 'NF;serie;data;operacao;chave;quantidade_inconsistencias;motivos';
 
   // Campo de texto: sempre entre aspas duplas, aspas internas dobradas.
@@ -339,7 +359,8 @@
     return i.linha + ';' + campoCsv(i.registro) + ';' + campoCsv(i.campo) + ';' + campoCsv(i.valor) + ';' +
       campoCsv(i.motivo) + ';' + campoCsv(i.item) + ';' + campoCsv(i.imposto) + ';' + campoCsv(i.cst) + ';' +
       campoCsv(i.nf) + ';' + campoCsv(i.serie) + ';' + campoCsv(dataCsv(i.data)) + ';' + campoCsv(i.operacao) + ';' +
-      campoCsv(i.chave) + ';' + campoCsv(i.ncm) + ';' + campoCsv(i.descricao);
+      campoCsv(i.chave) + ';' + campoCsv(i.ncm) + ';' + campoCsv(i.descricao) + ';' +
+      campoCsv(i.aliquota) + ';' + campoCsv(i.valor_imposto);
   }
 
   function linhaCsvNota(n) {

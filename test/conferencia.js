@@ -8,8 +8,8 @@ function r170(item, o) {
   const f = new Array(38).fill('');
   f[1] = 'C170'; f[2] = '1'; f[3] = item;
   f[10] = o.icms; f[13] = o.bcIcms || '';
-  f[25] = o.pis; f[26] = o.bcPis || '';
-  f[31] = o.cofins; f[32] = o.bcCofins || '';
+  f[25] = o.pis; f[26] = o.bcPis || ''; f[27] = o.aliqPis || ''; f[30] = o.vlPis || '';
+  f[31] = o.cofins; f[32] = o.bcCofins || ''; f[33] = o.aliqCofins || ''; f[36] = o.vlCofins || '';
   return f.join('|') + '|';
 }
 
@@ -163,16 +163,16 @@ module.exports = function (check) {
   const csv = K.gerarCsv(rg.inconsistencias);
   const linhasCsv = csv.split('\r\n');
   check('CSV começa com BOM UTF-8', csv.charCodeAt(0) === 0xFEFF && Buffer.from(csv.slice(0, 1), 'utf8').equals(Buffer.from([0xEF, 0xBB, 0xBF])));
-  check('CSV: cabeçalho e ordem das colunas', linhasCsv[0] === '﻿linha;registro;campo;valor;motivo;item;imposto;CST;NF;serie;data;operacao;chave;ncm;descricao', linhasCsv[0]);
+  check('CSV: cabeçalho e ordem das colunas', linhasCsv[0] === '﻿linha;registro;campo;valor;motivo;item;imposto;CST;NF;serie;data;operacao;chave;ncm;descricao;aliquota;valor_imposto', linhasCsv[0]);
   check('CSV: todas as inconsistências (não limitado a 2.000)', linhasCsv.length === 5501 + 2 && linhasCsv[linhasCsv.length - 1] === '', String(linhasCsv.length));
   check('CSV: quebra de linha CRLF (sem LF solto)', !/[^\r]\n/.test(csv) && csv.endsWith('\r\n'));
   check('CSV: linha de dados no formato esperado',
-    linhasCsv[1] === '2;"0200";"COD_NCM";"XX";"NCM fora do formato de 8 dígitos";"G2";"";"";"";"";"";"";"";"";""', linhasCsv[1]);
-  check('CSV: imposto e CST preenchidos', /;"ICMS";"051";"";"";"";"";"";"12345678";"ITEM G1"$/.test(linhasCsv[3]), linhasCsv[3]);
+    linhasCsv[1] === '2;"0200";"COD_NCM";"XX";"NCM fora do formato de 8 dígitos";"G2";"";"";"";"";"";"";"";"";"";"";""', linhasCsv[1]);
+  check('CSV: imposto e CST preenchidos', /;"ICMS";"051";"";"";"";"";"";"12345678";"ITEM G1";"";""$/.test(linhasCsv[3]), linhasCsv[3]);
   const esc = K.gerarCsv([{ linha: 7, registro: 'C170', campo: 'COD_ITEM', valor: 'A"B;C', motivo: 'diz "x"; y', item: 'it;em', cst: '' }]).split('\r\n');
   check('CSV: aspas duplas escapadas e ponto e vírgula dentro de aspas',
-    esc[1] === '7;"C170";"COD_ITEM";"A""B;C";"diz ""x""; y";"it;em";"";"";"";"";"";"";"";"";""', esc[1]);
-  check('CSV vazio: só BOM e cabeçalho', K.gerarCsv([]) === '﻿linha;registro;campo;valor;motivo;item;imposto;CST;NF;serie;data;operacao;chave;ncm;descricao\r\n');
+    esc[1] === '7;"C170";"COD_ITEM";"A""B;C";"diz ""x""; y";"it;em";"";"";"";"";"";"";"";"";"";"";""', esc[1]);
+  check('CSV vazio: só BOM e cabeçalho', K.gerarCsv([]) === '﻿linha;registro;campo;valor;motivo;item;imposto;CST;NF;serie;data;operacao;chave;ncm;descricao;aliquota;valor_imposto\r\n');
   const partes = K.gerarCsvPartes(rg.inconsistencias, 1000);
   check('CSV em partes: várias partes, BOM só na primeira, mesmo conteúdo',
     partes.length > 1 && partes.join('') === csv && partes.slice(1).every(p => p.charCodeAt(0) !== 0xFEFF), String(partes.length));
@@ -266,6 +266,41 @@ module.exports = function (check) {
   })));
   check('motivo de exemplo: CST PIS 06 de saída não deve ter base, mas a base é 150,00',
     pc('1', '06', '150,00', 'pis')[0].motivo === 'CST PIS 06 de saída não deve ter base, mas a base é 150,00');
+  // CST 06 (SYN-54): mensagem com alíquota e valor do imposto preenchidos; a contagem não muda
+  const c06 = (o) => K.checkText([r0200('P1', '12345678'), r100('1', '1', '1', '01012026', CH1),
+    r170('P1', Object.assign({ icms: '000', bcIcms: '1,00', pis: '99', cofins: '99' }, o))].join('\n'));
+  const cstPis06 = c06({ pis: '06', bcPis: '150,00', aliqPis: '1,65', vlPis: '2,48' });
+  check('CST 06 com valor de PIS > 0: mensagem com alíquota e valor do imposto',
+    cstPis06.total === 1 && cstPis06.inconsistencias[0].motivo ===
+      'CST 06 (alíquota zero) com base > 0 e alíquota 1,65% / valor R$ 2,48 de PIS preenchidos: CST de alíquota zero não deveria ter base nem imposto',
+    JSON.stringify(cstPis06.inconsistencias));
+  check('CST 06 com valor de PIS > 0: aliquota e valor_imposto na inconsistência, imposto e CST como antes',
+    (i => i.aliquota === '1,65' && i.valor_imposto === '2,48' && i.imposto === 'PIS' && i.cst === '06' && i.campo === 'VL_BC_PIS' && i.valor === '150,00')(cstPis06.inconsistencias[0]));
+  const cstCofins06 = c06({ cofins: '06', bcCofins: '150,00', aliqCofins: '7,6', vlCofins: '11,40' });
+  check('CST 06 com valor de COFINS > 0: lê ALIQ_COFINS (33) e VL_COFINS (36)',
+    cstCofins06.total === 1 && cstCofins06.inconsistencias[0].motivo ===
+      'CST 06 (alíquota zero) com base > 0 e alíquota 7,6% / valor R$ 11,40 de COFINS preenchidos: CST de alíquota zero não deveria ter base nem imposto' &&
+    cstCofins06.inconsistencias[0].aliquota === '7,6' && cstCofins06.inconsistencias[0].valor_imposto === '11,40');
+  const base06 = c06({ pis: '06', bcPis: '150,00', aliqPis: '0,00', vlPis: '0,00' });
+  check('CST 06 com base > 0 e valor 0: continua inconsistência, mensagem sem imposto cobrado',
+    base06.total === 1 && base06.inconsistencias[0].motivo === 'CST PIS 06 de saída não deve ter base, mas a base é 150,00' &&
+    !/alíquota|R\$|imposto/.test(base06.inconsistencias[0].motivo), JSON.stringify(base06.inconsistencias));
+  check('CST 06 com base > 0 e valor vazio: continua inconsistência, aliquota e valor_imposto como estão no arquivo',
+    (x => x.total === 1 && x.inconsistencias[0].motivo === 'CST PIS 06 de saída não deve ter base, mas a base é 150,00' &&
+      x.inconsistencias[0].aliquota === '' && x.inconsistencias[0].valor_imposto === '')(c06({ pis: '06', bcPis: '150,00' })));
+  check('CST 06: mesma contagem e mesmo tipo no resumo com e sem valor de imposto', (() => {
+    const a = c06({ pis: '06', bcPis: '150,00', vlPis: '2,48', aliqPis: '1,65' }).resumo;
+    const b = c06({ pis: '06', bcPis: '150,00' }).resumo;
+    return a.total === 1 && b.total === 1 && JSON.stringify(a.porMotivo) === JSON.stringify(b.porMotivo) &&
+      JSON.stringify(a.porCstMotivo) === JSON.stringify(b.porCstMotivo);
+  })());
+  check('CST 06 sem base: nada é apontado mesmo com valor preenchido', c06({ pis: '06', bcPis: '0,00', aliqPis: '1,65', vlPis: '2,48' }).total === 0);
+  check('outros CST de alíquota zero não ganham a mensagem nova nem aliquota/valor_imposto', (i => i.motivo === 'CST PIS 04 de saída não deve ter base, mas a base é 150,00' &&
+    i.aliquota === '' && i.valor_imposto === '')(c06({ pis: '04', bcPis: '150,00', aliqPis: '1,65', vlPis: '2,48' }).inconsistencias[0]));
+  check('CSV: CST 06 traz aliquota e valor_imposto nas duas últimas colunas', (() => {
+    const l = K.gerarCsv(cstPis06.inconsistencias).split('\r\n')[1];
+    return l.endsWith(';"12345678";"ITEM P1";"1,65";"2,48"') && l.split(';').length === 17;
+  })());
   check('lista de saída (04) em nota de entrada e lista de entrada (73) em nota de saída não são apontadas',
     pc('0', '04', '9,00', 'pis').length === 0 && pc('0', '06', '9,00', 'cofins').length === 0 &&
     pc('1', '73', '9,00', 'pis').length === 0 && pc('1', '75', '9,00', 'cofins').length === 0);
@@ -349,12 +384,12 @@ module.exports = function (check) {
 
   // ---- CSV de inconsistências com contexto da nota ----
   const csvN = K.gerarCsv(rr.inconsistencias).split('\r\n');
-  check('CSV: contexto da nota nas últimas colunas', csvN[2] === '4;"C170";"VL_BC_ICMS";"5,00";"CST 040 não tributado, mas a base é maior que 0";"R1";"ICMS";"040";"300";"1";"10/01/2026";"1";"' + CH1 + '";"12345678";"ITEM R1"', csvN[2]);
-  check('CSV: inconsistência sem nota com colunas da nota vazias', /;"ICMS";"040";"";"";"";"";"";"12345678";"ITEM R1"$/.test(csvN[1]), csvN[1]);
+  check('CSV: contexto da nota nas últimas colunas', csvN[2] === '4;"C170";"VL_BC_ICMS";"5,00";"CST 040 não tributado, mas a base é maior que 0";"R1";"ICMS";"040";"300";"1";"10/01/2026";"1";"' + CH1 + '";"12345678";"ITEM R1";"";""', csvN[2]);
+  check('CSV: inconsistência sem nota com colunas da nota vazias', /;"ICMS";"040";"";"";"";"";"";"12345678";"ITEM R1";"";""$/.test(csvN[1]), csvN[1]);
   check('CSV: PIS/COFINS usa o CST_PIS / CST_COFINS na coluna CST',
     csvN.some(l => /;"VL_BC_PIS";"0";"CST PIS 01 de saída deve ter base maior que 0, mas a base é 0";"R1";"PIS";"01";"300"/.test(l)) &&
     csvN.some(l => /;"VL_BC_COFINS";"0";"CST COFINS 02 de saída deve ter base maior que 0, mas a base é 0";"R1";"COFINS";"02";"300"/.test(l)), csvN.join('\n'));
-  check('CSV: BOM, CRLF e ponto e vírgula', csvN[0].charCodeAt(0) === 0xFEFF && csvN[0].split(';').length === 15 && csvN.every(l => l === '' || l.split(';').length >= 15));
+  check('CSV: BOM, CRLF e ponto e vírgula', csvN[0].charCodeAt(0) === 0xFEFF && csvN[0].split(';').length === 17 && csvN.every(l => l === '' || l.split(';').length >= 15));
 
   // ---- CSV por nota ----
   const csvNotas = K.gerarCsvNotas(pn);
@@ -418,7 +453,7 @@ module.exports = function (check) {
   const csvI = K.gerarCsv(ri.inconsistencias).split('\r\n');
   const col = (l, n) => l.split(';')[n];
   const dalinha = n => csvI.find(l => l.startsWith(n + ';'));
-  check('CSV inconsistências: colunas e ordem', csvI[0] === '﻿linha;registro;campo;valor;motivo;item;imposto;CST;NF;serie;data;operacao;chave;ncm;descricao', csvI[0]);
+  check('CSV inconsistências: colunas e ordem', csvI[0] === '﻿linha;registro;campo;valor;motivo;item;imposto;CST;NF;serie;data;operacao;chave;ncm;descricao;aliquota;valor_imposto', csvI[0]);
   check('CSV inconsistências: imposto antes do CST; vazio nas que não são de imposto',
     col(dalinha(6), 6) === '"PIS"' && col(dalinha(6), 7) === '"01"' && col(dalinha(1), 6) === '""' && col(dalinha(3), 6) === '""');
   check('CSV inconsistências: data DD/MM/AAAA', col(dalinha(4), 10) === '"15/03/2026"' && !csvI.join('').includes('15032026'), dalinha(4));
@@ -426,7 +461,7 @@ module.exports = function (check) {
   const dtc = d => K.gerarCsv([{ linha: 1, registro: 'C170', campo: 'x', valor: '', motivo: '', item: '', imposto: '', cst: '', nf: '', serie: '', data: d, operacao: '', chave: '' }]).split('\r\n')[1].split(';')[10];
   check('data inválida ou fora do padrão é preservada, sem quebrar', dtc('31022026') === '"31022026"' && dtc('00012026') === '"00012026"' &&
     dtc('1503') === '"1503"' && dtc('abc') === '"abc"' && dtc('') === '""' && dtc(undefined) === '""' && dtc('29022024') === '"29/02/2024"', [dtc('31022026'), dtc('00012026'), dtc('abc')].join());
-  check('CSV inconsistências: BOM, CRLF e 15 colunas', csvI[0].charCodeAt(0) === 0xFEFF && csvI.every(l => l === '' || l.split(';').length === 15) && !/[^\r]\n/.test(csvI.join('\r\n')));
+  check('CSV inconsistências: BOM, CRLF e 17 colunas', csvI[0].charCodeAt(0) === 0xFEFF && csvI.every(l => l === '' || l.split(';').length === 17) && !/[^\r]\n/.test(csvI.join('\r\n')));
 
   // CSV por nota: data DD/MM/AAAA e data inválida preservada
   const csvNi = K.gerarCsvNotas([
@@ -553,18 +588,18 @@ module.exports = function (check) {
   // CSV de inconsistências: ncm e descricao no final, mantendo a ordem das anteriores
   const csvRk = K.gerarCsv(rk.inconsistencias).split('\r\n');
   const colsRk = l => l.split(';');
-  check('CSV: ncm e descricao no final, colunas anteriores na mesma ordem',
-    csvRk[0] === '﻿linha;registro;campo;valor;motivo;item;imposto;CST;NF;serie;data;operacao;chave;ncm;descricao' && colsRk(csvRk[0]).slice(-2).join() === 'ncm,descricao');
+  check('CSV: ncm e descricao, depois aliquota e valor_imposto no final, colunas anteriores na mesma ordem',
+    csvRk[0] === '﻿linha;registro;campo;valor;motivo;item;imposto;CST;NF;serie;data;operacao;chave;ncm;descricao;aliquota;valor_imposto' && colsRk(csvRk[0]).slice(-4).join() === 'ncm,descricao,aliquota,valor_imposto');
   const iMix = rk.inconsistencias.find(i => i.item === 'MIX');
   const lMix = csvRk.find(l => l.startsWith(iMix.linha + ';'));
   check('CSV: linha de item com NCM e descrição (aspas dobradas e ponto e vírgula dentro de aspas)',
-    lMix.endsWith(';"01/03/2026";"1";"' + CH1 + '";"99990000";"MISTO ""A""; B"'), lMix);
+    lMix.endsWith(';"01/03/2026";"1";"' + CH1 + '";"99990000";"MISTO ""A""; B";"";""'), lMix);
   const lZZ = csvRk.find(l => l.startsWith(linhaDe('ZZ').linha + ';'));
-  check('CSV: item sem 0200 com ncm e descricao vazios', lZZ.endsWith(';"' + CH1 + '";"";""'), lZZ);
+  check('CSV: item sem 0200 com ncm e descricao vazios', lZZ.endsWith(';"' + CH1 + '";"";"";"";""'), lZZ);
   const escNcm = K.gerarCsv([{ linha: 1, registro: 'C170', campo: 'x', valor: '', motivo: '', item: '', imposto: '', cst: '', nf: '', serie: '', data: '', operacao: '', chave: '', ncm: '1234', descricao: 'A "B"; C' }]).split('\r\n')[1];
   check('CSV: descrição com aspas e ponto e vírgula fica escapada e sem quebrar as colunas',
-    escNcm.endsWith(';"1234";"A ""B""; C"'), escNcm);
-  check('CSV: BOM, CRLF e 15 colunas fora das aspas', csvRk[0].charCodeAt(0) === 0xFEFF && !/[^\r]\n/.test(csvRk.join('\r\n')) && csvRk.slice(0, -1).every(l => l.replace(/"([^"]|"")*"/g, '').split(';').length === 15));
+    escNcm.endsWith(';"1234";"A ""B""; C";"";""'), escNcm);
+  check('CSV: BOM, CRLF e 17 colunas fora das aspas', csvRk[0].charCodeAt(0) === 0xFEFF && !/[^\r]\n/.test(csvRk.join('\r\n')) && csvRk.slice(0, -1).every(l => l.replace(/"([^"]|"")*"/g, '').split(';').length === 17));
 
   // CSV de NCMs distintos: coluna inconsistencias no final
   const csvNcR = K.gerarCsvNcms(rk.ncms).split('\r\n');
