@@ -77,6 +77,9 @@
   const TIPO_90_SEM_BASE = 'CST 90 com CFOP de uso/consumo/ativo não deveria ter base, mas a base é maior que 0';
   const TIPO_90_TRIBUTADO = 'CST 90 deveria ser tributado pelo CFOP, mas a base é 0';
 
+  // ICMS em CFOP sem base (5152, 5929), para qualquer CST.
+  const TIPO_CFOP_SEM_BASE = 'CFOP 5152/5929 não deveria ter base de ICMS, mas a base é > 0';
+
   // CST de alíquota zero de PIS/COFINS: a mensagem do motivo mostra a alíquota e o valor do imposto preenchidos.
   const CST_ALIQUOTA_ZERO = '06';
 
@@ -262,11 +265,15 @@
             }
           } else {
             esperado = imp.tabela[cst.slice(-2)];
+            // CFOP sem base de ICMS vale para qualquer CST (inclusive os fora da tabela).
+            if (cfg.CFOPS_ICMS_SEM_BASE.includes(cfopC170)) esperado = 'cfop_sem_base';
           }
           if (!esperado) return;
           const base = parseValor(bruto);
           if (Number.isNaN(base)) {
             add(linha, 'C170', imp.base, bruto || '', 'Base de cálculo não é número', item, cstLinha, undefined, nota, imp.nome);
+          } else if (esperado === 'cfop_sem_base') {
+            if (base > 0) add(linha, 'C170', imp.base, bruto, 'CFOP ' + cfopC170 + ' não deveria ter base de ICMS, mas a base é ' + bruto.trim(), item, cstLinha, TIPO_CFOP_SEM_BASE, nota, imp.nome);
           } else if (esperado === 'sem_base' && base !== 0) {
             add(linha, 'C170', imp.base, bruto, 'CST ' + cst + ' não tributado, mas a base é maior que 0', item, cstLinha, TIPO_NAO_TRIBUTADO, nota, imp.nome);
           } else if (esperado === 'exige_base' && !(base > 0)) {

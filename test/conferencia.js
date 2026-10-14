@@ -117,6 +117,20 @@ module.exports = function (check) {
   check('CST 090 com CFOP vazio é tratado como fora da lista', u90('090', '', '0,00').length === 1 && /CFOP \(vazio\)/.test(u90('090', '', '0,00')[0].motivo));
   check('CST 090 não usa mais o motivo "analisar caso a caso"', !/caso a caso/.test(u90('090', '1949', '0,00')[0].motivo));
   check('coluna cfop vem do C170 em outras inconsistências também', K.checkText(r0200('C1', '12345678') + '\n' + r170('C1', { icms: '', cfop: '1102', pis: '01', cofins: '01' })).inconsistencias[0].cfop === '1102');
+  // CFOP 5152/5929 sem base de ICMS (SYN-60)
+  check('CST 051 + CFOP 5152 base 0: ok', u90('051', '5152', '0,00').length === 0);
+  check('CST 000 + CFOP 5929 base 0: ok', u90('000', '5929', '0,00').length === 0 && u90('000', '5929', '').length === 0);
+  check('CST 020 + CFOP 5929 base 0: ok', u90('020', '5929', '0,00').length === 0);
+  const e5929 = u90('000', '5929', '10,00');
+  check('CST 000 + CFOP 5929 base > 0: erro', e5929.length === 1 && e5929[0].motivo === 'CFOP 5929 não deveria ter base de ICMS, mas a base é 10,00' && e5929[0].cfop === '5929', JSON.stringify(e5929));
+  // CFOP 1152 (entrada por transferência) sem base de ICMS (SYN-63)
+  check('CST 051 + CFOP 1152 base 0: sem base não aponta', u90('051', '1152', '0,00').length === 0);
+  ['000', '020', '051', '151', '251', '351', '451', '551', '090'].forEach(cst => {
+    check('CST ' + cst + ' + CFOP 1152 base 0: ok', u90(cst, '1152', '0,00').length === 0 && u90(cst, '1152', '').length === 0);
+  });
+  const e1152 = u90('051', '1152', '10,00');
+  check('CST 051 + CFOP 1152 base > 0: erro', e1152.length === 1 && e1152[0].motivo === 'CFOP 1152 não deveria ter base de ICMS, mas a base é 10,00' && e1152[0].cfop === '1152', JSON.stringify(e1152));
+  check('mensagem de base > 0 cita o CFOP certo (5152)', u90('000', '5152', '5,00')[0].motivo === 'CFOP 5152 não deveria ter base de ICMS, mas a base é 5,00');
   check('inconsistência do 0200 fica com cfop vazio', por(3, 'COD_NCM')[0].cfop === '');
   ['051', '251'].forEach(cst => {
     const m = unica(cst, '0,00');

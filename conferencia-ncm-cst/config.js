@@ -23,6 +23,11 @@
   // ICMS CST x90, validado pela fiscal da MAC: CFOPs de uso/consumo/ativo NÃO podem ter base de ICMS;
   // qualquer outro CFOP deve ter base maior que 0.
   const CFOPS_ICMS_90_SEM_BASE = ['1556', '2556', '1407', '2407', '1551', '2551', '1406', '2406'];
+  // ICMS, validado pela fiscal Daniela (14/10/2026): nestes CFOPs de saída NÃO há base de ICMS, para qualquer
+  // CST. Base 0 é o esperado (não é inconsistência) e base maior que 0 é inconsistência.
+  //   1152: entrada por transferência; 5152: transferência de produção/mercadoria adquirida;
+  //   5929: lançamento por emissão de cupom fiscal.
+  const CFOPS_ICMS_SEM_BASE = ['1152', '5152', '5929'];
 
   // PIS/COFINS, validado pela fiscal da MAC: CSTs que NÃO devem ter base (base zero), conforme a operação
   // (IND_OPER do C100: 0 = entrada, 1 = saída). Vale para CST_PIS (VL_BC_PIS) e CST_COFINS (VL_BC_COFINS).
@@ -49,7 +54,7 @@
   const FORMATO_CST_PIS_COFINS = /^(0[1-9]|[1-9]\d)$/;
 
   const api = {
-    REGRA_BASE_VALIDADA, BASE_POR_CST_ICMS, CFOPS_ICMS_90_SEM_BASE, BASE_POR_CST_PIS_COFINS, PIS_COFINS_EXIGE_BASE,
+    REGRA_BASE_VALIDADA, BASE_POR_CST_ICMS, CFOPS_ICMS_90_SEM_BASE, CFOPS_ICMS_SEM_BASE, BASE_POR_CST_PIS_COFINS, PIS_COFINS_EXIGE_BASE,
     FORMATO_NCM, FORMATO_CST_ICMS, FORMATO_CST_PIS_COFINS
   };
 
