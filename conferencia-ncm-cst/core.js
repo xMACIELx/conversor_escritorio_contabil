@@ -129,11 +129,13 @@
       if (daNota) {
         let n = porNota.get(daNota.linha);
         if (!n) {
-          n = { nf: ctx.nf, serie: ctx.serie, data: ctx.data, operacao: ctx.operacao, chave: ctx.chave, total: 0, tipos: new Set() };
+          n = { nf: ctx.nf, serie: ctx.serie, data: ctx.data, operacao: ctx.operacao, chave: ctx.chave, total: 0, base: 0, tipos: new Set() };
           porNota.set(daNota.linha, n);
         }
         n.total++;
         n.tipos.add(tipo);
+        // Base envolvida: soma das bases (maiores que 0) das inconsistências de base da nota; desempate da prioridade.
+        if (/^VL_BC_/.test(campo)) { const b = parseValor(valor); if (b > 0) n.base += b; }
       }
       soma(porCst, imposto + SEP_CHAVE + cst);
       soma(porMotivo, tipo);
@@ -173,11 +175,16 @@
           const p = e.k.split(SEP_CHAVE);
           return { imposto: p[0], cst: p[1], motivo: p[2], total: e.total };
         })),
-        // Notas (C100) com inconsistência em algum C170, contando todas; mais inconsistências primeiro.
+        // Notas (C100) com inconsistência em algum C170, contando todas (o CSV por nota traz todas), por prioridade:
+        // mais inconsistências, depois maior base envolvida, depois NF/série (ordem estável).
         porNota: Array.from(porNota.values()).map(n => ({
           nf: n.nf, serie: n.serie, data: n.data, operacao: n.operacao, chave: n.chave,
-          total: n.total, motivos: Array.from(n.tipos)
-        })).sort((a, b) => b.total - a.total)
+          total: n.total, baseEnvolvida: Math.round(n.base * 100) / 100, motivos: Array.from(n.tipos)
+        })).sort((a, b) => b.total - a.total || b.baseEnvolvida - a.baseEnvolvida ||
+          a.nf.localeCompare(b.nf, undefined, { numeric: true }) || a.serie.localeCompare(b.serie)),
+        // Para a tela mostrar "N de TOTAL": notas com inconsistência e inconsistências que caem em notas.
+        totalNotasComInconsistencia: porNota.size,
+        totalInconsistenciasEmNotas: Array.from(porNota.values()).reduce((s, n) => s + n.total, 0)
       };
     }
 
