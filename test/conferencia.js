@@ -331,6 +331,20 @@ module.exports = function (check) {
     for (let i = 0; i < tr.length; i += 11) c3.feedChunk(tr.slice(i, i + 11));
     return JSON.stringify(c3.finish().resumo.porNota) === JSON.stringify(pn);
   })());
+  check('resumo por nota: totais de notas e de inconsistências em notas',
+    rr.resumo.totalNotasComInconsistencia === 2 && rr.resumo.totalInconsistenciasEmNotas === 9 && rr.resumo.total === 10);
+  check('resumo por nota: base envolvida soma só bases de inconsistência', pn[0].baseEnvolvida === 10 && pn[1].baseEnvolvida === 0, JSON.stringify(pn));
+  const trP = [
+    r0200('P1', '12345678'),
+    r100('1', '10', '1', '10012026', CH1), r170('P1', { icms: '040', bcIcms: '5,00', pis: '99', cofins: '99' }),
+    r100('1', '9', '1', '10012026', CH2), r170('P1', { icms: '040', bcIcms: '50,00', pis: '99', cofins: '99' }),
+    r100('1', '8', '1', '10012026', ''), r170('P1', { icms: '040', bcIcms: '50,00', pis: '99', cofins: '99' }),
+    r170('P1', { icms: '040', bcIcms: '1,00', pis: '99', cofins: '99' }),
+    r100('1', '11', '1', '10012026', ''), r170('P1', { icms: '040', bcIcms: '5,00', pis: '99', cofins: '99' })
+  ].join('\n');
+  const pp = K.checkText(trP).resumo;
+  check('resumo por nota: prioridade = inconsistências, depois base envolvida, depois NF',
+    pp.porNota.map(n => n.nf).join() === '8,9,10,11' && pp.totalNotasComInconsistencia === 4 && pp.totalInconsistenciasEmNotas === 5, JSON.stringify(pp.porNota));
   check('resumo por nota vazio sem inconsistências', K.checkText(r0200('A1', '12345678')).resumo.porNota.length === 0);
 
   // ---- CSV de inconsistências com contexto da nota ----
