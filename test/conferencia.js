@@ -108,7 +108,7 @@ module.exports = function (check) {
     const e = u90(cst, '1556', '10,00');
     check('CST ' + cst + ' com CFOP da lista (1556) com base: erro', e.length === 1 && e[0].motivo === 'CST ' + cst + ' com CFOP 1556 não deveria ter base' && e[0].cfop === '1556', JSON.stringify(e));
     const t = u90(cst, '1102', '0,00');
-    check('CST ' + cst + ' com CFOP de entrada fora da lista (1102) sem base e sem C110: erro', t.length === 1 && t[0].motivo === 'CST ' + cst + ' com CFOP 1102, base 0 e sem C110 (sem informação de crédito)' && t[0].cfop === '1102', JSON.stringify(t));
+    check('CST ' + cst + ' com CFOP de entrada fora da lista (1102) sem base e sem C110: não é erro (vai para "a conferir no XML")', t.length === 0);
     check('CST ' + cst + ' com CFOP de saída (5102) sem base mantém "deveria ser tributado"', u90(cst, '5102', '0,00')[0].motivo === 'CST ' + cst + ' com CFOP 5102 deveria ser tributado, mas a base é 0');
     check('CST ' + cst + ' com CFOP fora da lista com base: ok', u90(cst, '1102', '10,00').length === 0);
   });
@@ -116,7 +116,7 @@ module.exports = function (check) {
     check('CFOP ' + cfop + ' está na lista do CST 090 (sem base ok, com base erro)', u90('090', cfop, '0,00').length === 0 && u90('090', cfop, '1,00').length === 1);
   });
   check('CST 090 com CFOP vazio é tratado como fora da lista', u90('090', '', '0,00').length === 1 && /CFOP \(vazio\)/.test(u90('090', '', '0,00')[0].motivo));
-  check('CST 090 não usa mais o motivo "analisar caso a caso"', !/caso a caso/.test(u90('090', '1949', '0,00')[0].motivo));
+  check('CST 090 não usa mais o motivo "analisar caso a caso"', !/caso a caso/.test(u90('090', '5949', '0,00')[0].motivo));
   check('coluna cfop vem do C170 em outras inconsistências também', K.checkText(r0200('C1', '12345678') + '\n' + r170('C1', { icms: '', cfop: '1102', pis: '01', cofins: '01' })).inconsistencias[0].cfop === '1102');
   // CFOP 5152/5929 sem base de ICMS (SYN-60)
   check('CST 051 + CFOP 5152 base 0: ok', u90('051', '5152', '0,00').length === 0);
@@ -154,10 +154,13 @@ module.exports = function (check) {
   const comTexto = nota090(['|0450|1141|' + CRED + '|'], ['|C110|1141||']);
   check('C110 + 0450 com texto de crédito: não aponta e conta no informativo', icms(comTexto).length === 0 && comTexto.total === 0 && comTexto.resumo.cst90CreditoSimples === 1, JSON.stringify(comTexto.inconsistencias));
   const semTexto = nota090(['|0450|1141|INFORMACAO QUALQUER|'], ['|C110|1141||']);
-  check('C110 sem texto de crédito: aponta', icms(semTexto).length === 1 && icms(semTexto)[0].motivo === 'CST 090 com CFOP 1102, base 0 e sem informação de crédito de ICMS no C110/0450 (fornecedor do Simples Nacional?)' && semTexto.resumo.cst90CreditoSimples === 0, JSON.stringify(semTexto.inconsistencias));
+  check('C110 sem texto de crédito: vai para "a conferir no XML", não para erros', icms(semTexto).length === 0 && semTexto.total === 0 && semTexto.resumo.cst90CreditoSimples === 0 &&
+    semTexto.resumo.conferirXml.totalItens === 1 && semTexto.resumo.conferirXml.fornecedores[0].motivo === 'C110 sem texto de crédito', JSON.stringify(semTexto.resumo.conferirXml));
   const semC110 = nota090(['|0450|1141|' + CRED + '|'], []);
-  check('sem C110: aponta mesmo existindo 0450', icms(semC110).length === 1 && icms(semC110)[0].motivo === 'CST 090 com CFOP 1102, base 0 e sem C110 (sem informação de crédito)');
-  check('tipos dos dois motivos novos são distintos no resumo', new Set([semTexto, semC110].map(x => x.resumo.porMotivo[0].motivo)).size === 2);
+  check('sem C110: vai para "a conferir no XML" mesmo existindo 0450', icms(semC110).length === 0 && semC110.total === 0 &&
+    semC110.resumo.conferirXml.totalItens === 1 && semC110.resumo.conferirXml.fornecedores[0].motivo === 'sem C110');
+  check('aviso do bloco "a conferir no XML"', semC110.resumo.conferirXml.aviso === 'CST 090 de entrada com base 0 sem crédito de ICMS informado no C110/0450: confira no XML se o fornecedor do Simples tem direito a crédito; se não tiver, o CST 090 sem base está correto.');
+  check('com texto de crédito não entra em "a conferir"', comTexto.resumo.conferirXml.totalItens === 0);
   const minusc = nota090(['|0450|7|permite o aproveitamento do credito do icms no valor de r$ 1,00, correspondente a aliquota de 1,25%|'], ['|C110|7||']);
   check('texto em minúsculas, sem acento e "CREDITO DO ICMS": não aponta', icms(minusc).length === 0 && minusc.resumo.cst90CreditoSimples === 1);
   const acento = nota090(['|0450|7|Permite o Aproveitamento do Crédito de ICMS|'], ['|C110|7||']);
@@ -167,7 +170,7 @@ module.exports = function (check) {
   const doisC110 = nota090(['|0450|1|OUTRA INFORMACAO|', '|0450|2|' + CRED + '|'], ['|C110|1||', '|C110|2||']);
   check('crédito em um dos C110 da nota: não aponta', icms(doisC110).length === 0);
   const entre = K.checkText([r0200('C1', '12345678'), '|0450|1|' + CRED + '|', c100('1'), '|C110|1||', item090(), c100('2'), item090(), '|C990|5|'].join('\n'));
-  check('C110 vale só para a sua nota: nota seguinte sem C110 aponta', icms(entre).length === 1 && /sem C110/.test(icms(entre)[0].motivo) && icms(entre)[0].nf === '2');
+  check('C110 vale só para a sua nota: nota seguinte sem C110 vai para "a conferir"', icms(entre).length === 0 && entre.resumo.conferirXml.totalItens === 1 && entre.resumo.conferirXml.fornecedores[0].notas === '2');
   check('CST 090 com base > 0 e CFOP fora da lista segue sem apontar', K.checkText([r0200('C1', '12345678'), c100('1'), r170('C1', { icms: '090', cfop: '1102', bcIcms: '10,00', pis: '01', cofins: '01' })].join('\n')).total === 0);
   check('CST 090 de saída sem base e CFOP 1152 seguem como antes', u90('090', '1152', '0,00').length === 0);
   check('CSV completo não traz os itens aceitos', K.gerarCsv(comTexto.inconsistencias).split('\r\n').filter(Boolean).length === 1);
@@ -175,6 +178,45 @@ module.exports = function (check) {
   check('CST 010 + CFOP 5411 com base: não aponta', u5411('010', '100,00').length === 0 && u5411('210', '5,00').length === 0);
   check('CST 040 + CFOP 5411 com base: continua apontando', u5411('040', '100,00').length === 1);
   check('CST 010 + outro CFOP com base: continua apontando', u90('010', '5102', '10,00').length === 1);
+
+  // CST 051 aceito (produtor rural / sucata) e CST 090 a conferir no XML por fornecedor (SYN-69)
+  const p0150 = (cod, nome, cnpj, cpf) => '|0150|' + cod + '|' + nome + '|1058|' + cnpj + '|' + cpf + '|ISENTO|';
+  const cab = (oper, cod, nf) => '|C100|' + oper + '|' + (oper === '0' ? '0' : '1') + '|' + cod + '|55|00|001|' + nf + '|';
+  const sped = linhas => K.checkText(['|0000|017|0|01012026|31012026|EMPRESA FICTICIA|', p0150('P1', 'PRODUTOR FICTICIO', '', '12345678901'), p0150('F1', 'FORNECEDOR LTDA', '11222333000144', ''),
+    r0200('N1', '12345678'), r0200('S1', '47079000'), ...linhas, '|C990|9|'].join('\n'));
+  // PIS/COFINS 99 não é conferido: isola o ICMS nas notas de saída
+  const i051 = (item, cfop) => r170(item, { icms: '051', cfop, bcIcms: '0,00', pis: '99', cofins: '99' });
+  const ent051 = (cod) => sped([cab('0', cod, '10'), i051('N1', '1102')]);
+  check('051 base 0 em entrada de 0150 com CPF (produtor rural): aceito e contado', ent051('P1').total === 0 && ent051('P1').resumo.cst051Aceitos === 1);
+  check('051 base 0 em entrada de 0150 com CNPJ: aponta', ent051('F1').total === 1 && /analisar caso a caso/.test(ent051('F1').inconsistencias[0].motivo) && ent051('F1').resumo.cst051Aceitos === 0);
+  check('051 base 0 em entrada de participante sem 0150: aponta', ent051('XX').total === 1);
+  const sai051 = (item, cfop) => sped([cab('1', 'F1', '20'), i051(item, cfop)]);
+  check('051 base 0 em saída de sucata (NCM 47079000, CFOP 5102): aceito e contado', sai051('S1', '5102').total === 0 && sai051('S1', '5102').resumo.cst051Aceitos === 1);
+  check('051 base 0 em saída de outro NCM (CFOP 5102): aponta', sai051('N1', '5102').total === 1);
+  check('051 base 0 em saída de sucata com outro CFOP (5101): aponta', sai051('S1', '5101').total === 1);
+  check('051 base 0 em saída para participante com CPF e NCM comum: aponta (CPF só vale na entrada)', sped([cab('1', 'P1', '21'), i051('N1', '5102')]).total === 1);
+  check('051 com base > 0 não é afetado', sped([cab('0', 'P1', '22'), r170('N1', { icms: '051', cfop: '1102', bcIcms: '5,00', pis: '01', cofins: '01' })]).total === 0);
+  check('051 aceito não vai para o CSV de inconsistências', K.gerarCsv(ent051('P1').inconsistencias).split('\r\n').filter(Boolean).length === 1);
+
+  const i090 = (cfop, bc) => r170('N1', { icms: '090', cfop: cfop || '1102', bcIcms: bc || '0,00', pis: '01', cofins: '01' });
+  const x = sped([
+    cab('0', 'F1', '100'), i090(), i090('1253'),                      // sem C110: 2 itens, 1 nota
+    cab('0', 'F1', '101'), '|C110|1||', i090(),                       // C110 sem texto: 1 item, 1 nota
+    cab('0', 'P1', '102'), i090(),                                    // produtor (CPF): 1 item
+    cab('0', 'F1', '103'), i090('1102', '10,00'), i090('1556', '10,00') // base > 0: só a de CFOP sem base é erro
+  ]);
+  const fx = x.resumo.conferirXml.fornecedores;
+  check('090 a conferir: total de itens e notas', x.resumo.conferirXml.totalItens === 4 && x.resumo.conferirXml.totalNotas === 3, JSON.stringify(x.resumo.conferirXml));
+  check('090 a conferir: fora do total e das inconsistências (só a base > 0 em CFOP sem base é erro)', x.total === 1 && x.inconsistencias[0].cfop === '1556');
+  check('agrupa por fornecedor, ordenado por itens desc', fx.length === 2 && fx[0].cnpj === '11222333000144' && fx[0].fornecedor === 'FORNECEDOR LTDA' && fx[0].qtdItens === 3 && fx[0].qtdNotas === 2 &&
+    fx[0].cfops === '1102, 1253' && fx[0].motivo === 'sem C110 | C110 sem texto de crédito' && fx[0].notas === '100, 101', JSON.stringify(fx));
+  check('fornecedor pessoa física: CPF e sem CNPJ', fx[1].cpf === '12345678901' && fx[1].cnpj === '' && fx[1].qtdItens === 1 && fx[1].motivo === 'sem C110');
+  const csvX = K.gerarCsvConferirXml(fx).split('\r\n');
+  check('CSV a conferir no XML: BOM, cabeçalho, CRLF e linhas por fornecedor', csvX[0] === '﻿fornecedor;cnpj;cpf;qtd_notas;qtd_itens;cfops;motivo;notas' && csvX.length === 4 && csvX[3] === '' &&
+    csvX[1] === '"FORNECEDOR LTDA";"11222333000144";"";2;3;"1102, 1253";"sem C110 | C110 sem texto de crédito";"100, 101"', JSON.stringify(csvX));
+  const muitas = sped(Array.from({ length: 60 }, (_, k) => [cab('0', 'F1', String(k + 1)), i090()]).flat());
+  check('lista de notas do CSV é limitada', muitas.resumo.conferirXml.fornecedores[0].qtdNotas === 60 && muitas.resumo.conferirXml.fornecedores[0].notas.endsWith(', … (+10)') && muitas.resumo.conferirXml.fornecedores[0].notas.split(', ').length === 51);
+  check('sem C100 (fornecedor desconhecido): a conferir, sem nota', K.checkText(r0200('N1', '12345678') + '\n' + i090()).resumo.conferirXml.fornecedores[0].qtdNotas === 0);
 
   // CST de 4 dígitos (possível CSOSN do Simples)
   const q = K.checkText([r0200('D1', '12345678'),
@@ -209,17 +251,16 @@ module.exports = function (check) {
   const res = rg.resumo;
   const cstDe = c => (res.porCst.find(e => e.cst === c) || {}).total;
   const motDe = m => (res.porMotivo.find(e => e.motivo === m) || {}).total;
-  check('resumo: total considera todas (mais de 2.000)', res.total === 5501 && rg.total === 5501 && rg.inconsistencias.length === 5501, String(res.total));
-  check('resumo por CST', cstDe('051') === 2500 && cstDe('090') === 1700 && cstDe('0101') === 1000 && cstDe('') === 301, JSON.stringify(res.porCst));
+  check('resumo: total considera todas (mais de 2.000); CST 090 sem crédito fica fora', res.total === 3801 && rg.total === 3801 && rg.inconsistencias.length === 3801 && res.conferirXml.totalItens === 1700, String(res.total));
+  check('resumo por CST', cstDe('051') === 2500 && cstDe('090') === undefined && cstDe('0101') === 1000 && cstDe('') === 301, JSON.stringify(res.porCst));
   check('resumo por CST soma o total', res.porCst.reduce((s, e) => s + e.total, 0) === res.total);
   check('resumo por motivo agrupa sem o texto variável',
     motDe('CST deve ter base maior que 0, mas a base é 0: analisar caso a caso') === 2500 &&
-    motDe('CST 90 de entrada com base 0 e sem C110 (sem informação de crédito)') === 1700 &&
     motDe('Item sem cadastro no registro 0200 (NCM não conferida)') === 300 &&
-    motDe('NCM fora do formato de 8 dígitos') === 1 && res.porMotivo.length === 5 &&
+    motDe('NCM fora do formato de 8 dígitos') === 1 && res.porMotivo.length === 4 &&
     res.porMotivo.some(e => /^CST com 4 dígitos/.test(e.motivo) && e.total === 1000), JSON.stringify(res.porMotivo));
   const cm = (c, m) => (res.porCstMotivo.find(e => e.cst === c && /analisar caso a caso/.test(e.motivo) === m) || {}).total;
-  check('resumo por CST e motivo (051 em análise; 090 por CFOP)', cm('051', true) === 2500 && cm('090', true) === undefined && cm('090', false) === 1700);
+  check('resumo por CST e motivo (051 em análise; 090 sem crédito fora)', cm('051', true) === 2500 && cm('090', true) === undefined && cm('090', false) === undefined);
   check('resumo por CST e motivo soma o total', res.porCstMotivo.reduce((s, e) => s + e.total, 0) === res.total);
   check('resumo ordenado do maior para o menor', res.porCst.every((e, i, a) => i === 0 || a[i - 1].total >= e.total));
   check('resumo sem inconsistências', K.checkText(r0200('A1', '12345678')).resumo.total === 0);
@@ -232,7 +273,7 @@ module.exports = function (check) {
   const linhasCsv = csv.split('\r\n');
   check('CSV começa com BOM UTF-8', csv.charCodeAt(0) === 0xFEFF && Buffer.from(csv.slice(0, 1), 'utf8').equals(Buffer.from([0xEF, 0xBB, 0xBF])));
   check('CSV: cabeçalho e ordem das colunas', linhasCsv[0] === '﻿linha;registro;campo;valor;motivo;item;imposto;CST;NF;serie;data;operacao;chave;ncm;descricao;aliquota;valor_imposto;cfop', linhasCsv[0]);
-  check('CSV: todas as inconsistências (não limitado a 2.000)', linhasCsv.length === 5501 + 2 && linhasCsv[linhasCsv.length - 1] === '', String(linhasCsv.length));
+  check('CSV: todas as inconsistências (não limitado a 2.000)', linhasCsv.length === 3801 + 2 && linhasCsv[linhasCsv.length - 1] === '', String(linhasCsv.length));
   check('CSV: quebra de linha CRLF (sem LF solto)', !/[^\r]\n/.test(csv) && csv.endsWith('\r\n'));
   check('CSV: linha de dados no formato esperado',
     linhasCsv[1] === '2;"0200";"COD_NCM";"XX";"NCM fora do formato de 8 dígitos";"G2";"";"";"";"";"";"";"";"";"";"";"";""', linhasCsv[1]);
