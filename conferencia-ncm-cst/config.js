@@ -25,9 +25,9 @@
   const CFOPS_ICMS_90_SEM_BASE = ['1556', '2556', '1407', '2407', '1551', '2551', '1406', '2406'];
   // ICMS, validado pela fiscal Daniela (14/10/2026): nestes CFOPs de saída NÃO há base de ICMS, para qualquer
   // CST. Base 0 é o esperado (não é inconsistência) e base maior que 0 é inconsistência.
-  //   5152: transferência de produção/mercadoria adquirida; 5929: lançamento por emissão de cupom fiscal.
-  // 1152 (entrada de transferência) fica de fora: pendente confirmação da fiscal; segue o comportamento atual.
-  const CFOPS_ICMS_SEM_BASE = ['5152', '5929'];
+  //   1152: entrada por transferência; 5152: transferência de produção/mercadoria adquirida;
+  //   5929: lançamento por emissão de cupom fiscal.
+  const CFOPS_ICMS_SEM_BASE = ['1152', '5152', '5929'];
 
   // PIS/COFINS, validado pela fiscal da MAC: CSTs que NÃO devem ter base (base zero), conforme a operação
   // (IND_OPER do C100: 0 = entrada, 1 = saída). Vale para CST_PIS (VL_BC_PIS) e CST_COFINS (VL_BC_COFINS).
