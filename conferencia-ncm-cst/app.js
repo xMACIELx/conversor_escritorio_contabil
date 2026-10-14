@@ -7,6 +7,8 @@
   const MAX_ROWS = 2000;
   // A lista de notas do resumo também é limitada na tela; o CSV por nota traz todas.
   const MAX_NOTAS = 200;
+  // Tamanho máximo da descrição do produto na célula (o title traz o texto inteiro).
+  const MAX_DESCRICAO = 40;
   let running = false;
   let current = null; // resultado exibido: base do CSV completo
 
@@ -30,6 +32,17 @@
   function fmtData(d) {
     if (!d) return '—';
     return /^\d{8}$/.test(d) ? d.slice(0, 2) + '/' + d.slice(2, 4) + '/' + d.slice(4) : d;
+  }
+
+  // Descrição longa é cortada na célula; o texto completo fica no title (ao passar o mouse).
+  function cortar(texto) {
+    return texto.length > MAX_DESCRICAO ? texto.slice(0, MAX_DESCRICAO - 1).trimEnd() + '…' : texto;
+  }
+
+  function celulaProduto(descricao) {
+    const td = el('td', 'produto', descricao ? cortar(descricao) : '—');
+    if (descricao) td.title = descricao;
+    return td;
   }
 
   function setStatus(text, isError) {
@@ -59,7 +72,8 @@
       const tr = el('tr');
       tr.append(el('td', 'num', String(i.linha)), el('td', null, i.registro), el('td', null, i.campo),
         el('td', 'val', i.valor === '' ? '(vazio)' : i.valor), el('td', null, i.motivo), el('td', null, i.item || '—'),
-        el('td', null, i.cst || '—'), el('td', null, i.nf || '—'), el('td', null, i.serie || '—'),
+        el('td', 'val', i.ncm || '—'), celulaProduto(i.descricao),
+        el('td', null, i.imposto || '—'), el('td', null, i.cst || '—'), el('td', null, i.nf || '—'), el('td', null, i.serie || '—'),
         el('td', null, fmtData(i.data)), el('td', null, fmtOperacao(i.operacao)));
       body.append(tr);
     });
@@ -70,9 +84,14 @@
       ' inconsistências. O CSV traz todas.';
 
     renderResumo(res.resumo);
+    renderNcmsTop(res.resumo);
     renderNotas(res.resumo.porNota);
-    current = { inconsistencias: res.inconsistencias, notas: res.resumo.porNota, name };
-    $('csv-bar').hidden = res.total === 0;
+    current = { inconsistencias: res.inconsistencias, notas: res.resumo.porNota, ncms: res.ncms, name };
+    // O CSV de NCMs vale mesmo sem inconsistências; os outros dois só quando há o que listar.
+    $('csv-bar').hidden = false;
+    $('csv').hidden = res.total === 0;
+    $('csv-notas').hidden = res.total === 0;
+    $('csv-ncms').hidden = false;
     $('csv-note').textContent = '';
   }
 
@@ -90,8 +109,24 @@
   function renderResumo(r) {
     $('resumo-cst').hidden = r.total === 0;
     $('resumo-total').textContent = 'Total: ' + fmt(r.total) + ' inconsistência(s).';
-    fillRows('resumo-cst-body', r.porCst.map(e => [e.cst || '(sem CST)', e.total]));
+    fillRows('resumo-cst-body', r.porCst.map(e => [(e.imposto ? e.imposto + ' ' : '') + (e.cst || '(sem CST)'), e.total]));
     fillRows('resumo-motivo-body', r.porMotivo.map(e => [e.motivo, e.total]));
+  }
+
+  // Ranking do core (até 30 NCMs), para a fiscal consultar na IOB só esses; o total conta todos os NCMs.
+  function renderNcmsTop(r) {
+    const top = r.ncmsTop || [];
+    $('resumo-ncms').hidden = top.length === 0;
+    $('ncms-total').textContent = 'Total: ' + fmt(r.totalNcmsComInconsistencia) + ' NCM(s) distinto(s) com inconsistência.' +
+      (r.totalNcmsComInconsistencia > top.length ? ' Abaixo, os ' + fmt(top.length) + ' com mais inconsistências.' : '');
+    const body = $('ncms-body');
+    body.textContent = '';
+    top.forEach(n => {
+      const tr = el('tr');
+      tr.append(el('td', 'val', n.ncm === '' ? '(vazio)' : n.ncm), celulaProduto(n.descricao),
+        el('td', 'num', fmt(n.total)), el('td', null, n.quebra));
+      body.append(tr);
+    });
   }
 
   // Notas (C100) com inconsistência: total e lista limitada a MAX_NOTAS, mais inconsistências primeiro.
@@ -120,6 +155,11 @@
   function downloadCsvNotas() {
     if (!current) return;
     save(Conferencia.gerarCsvNotasPartes(current.notas), '_notas.csv', current.notas.length);
+  }
+
+  function downloadCsvNcms() {
+    if (!current) return;
+    save(Conferencia.gerarCsvNcmsPartes(current.ncms), '_ncms.csv', current.ncms.length);
   }
 
   function save(partes, sufixo, linhas) {
@@ -171,6 +211,7 @@
 
   $('csv').addEventListener('click', downloadCsv);
   $('csv-notas').addEventListener('click', downloadCsvNotas);
+  $('csv-ncms').addEventListener('click', downloadCsvNcms);
   const drop = $('drop');
   $('file').addEventListener('change', e => { run(e.target.files[0]); e.target.value = ''; });
   drop.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('file').click(); } });

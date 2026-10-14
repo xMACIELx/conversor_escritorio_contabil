@@ -19,7 +19,7 @@
 
   const Config = typeof module !== 'undefined' && module.exports ? require('./config.js') : root.ConferenciaConfig;
 
-  const R0200 = { COD_ITEM: 2, COD_NCM: 8 };
+  const R0200 = { COD_ITEM: 2, DESCR_ITEM: 3, COD_NCM: 8 };
   const C100 = { IND_OPER: 2, SER: 7, NUM_DOC: 8, CHV_NFE: 9, DT_DOC: 10 };
   const C170 = {
     COD_ITEM: 3, CST_ICMS: 10, VL_BC_ICMS: 13,
@@ -72,22 +72,31 @@
   const TIPO_ANALISE = 'CST deve ter base maior que 0, mas a base é 0: analisar caso a caso';
 
   const SEP_CHAVE = '\u0000';
+  const SEP_MOTIVOS = ' | ';
+  const NCMS_NO_RANKING = 30;
 
   function ordenar(lista) {
     return lista.sort((a, b) => b.total - a.total || (a.cst || '').localeCompare(b.cst || '') ||
-      (a.motivo || '').localeCompare(b.motivo || ''));
+      (a.imposto || '').localeCompare(b.imposto || '') || (a.motivo || '').localeCompare(b.motivo || ''));
   }
 
   // options.config substitui a configuração (usado nos testes). Cada inconsistência:
-  // { linha, registro, campo, valor, motivo, item, cst, nf, serie, data, operacao, chave } (linha é 1-based).
+  // { linha, registro, campo, valor, motivo, item, imposto, cst, nf, serie, data, operacao, chave } (linha é 1-based).
+  // imposto = ICMS, PIS ou COFINS conforme a regra que gerou a inconsistência; vazio nas que não são de imposto
+  // (NCM do 0200 e item sem cadastro no 0200).
   // cst = CST do imposto conferido como aparece no C170 (CST_ICMS; CST_PIS ou CST_COFINS nas de PIS/COFINS);
   // vazio quando a inconsistência não tem CST (NCM do 0200 e item sem cadastro no 0200).
   // nf, serie, data, operacao (IND_OPER: 0 entrada, 1 saída) e chave vêm do C100 corrente; vazios sem C100
   // (e sempre vazios nas do 0200).
+  // ncm (COD_NCM) e descricao (DESCR_ITEM) vêm do 0200 do COD_ITEM, só nas inconsistências do C170; vazios
+  // quando o item não tem 0200 e nas inconsistências do próprio 0200.
   function createChecker(options) {
     const cfg = Object.assign({}, Config, (options && options.config) || {});
     const lista = impostos(cfg);
     const itens = new Set();
+    const infoItem = new Map();  // COD_ITEM -> { ncm (chave do mapa por NCM), descricao } do último 0200 do item
+    const porNcm = new Map();    // NCM como está no 0200 -> { descricao, itens, c170, csts: Map }
+    const incPorNcm = new Map(); // NCM -> { total, quebra: Map(imposto + CST -> total) }; só inconsistências de C170 com item no 0200
     const inconsistencias = [];
     const porCst = new Map();
     const porMotivo = new Map();
@@ -100,14 +109,23 @@
     function soma(mapa, chave) { mapa.set(chave, (mapa.get(chave) || 0) + 1); }
 
     // tipo = motivo sem o texto variável; o resumo conta todas as inconsistências, não só as exibidas.
-    function add(linha, registro, campo, valor, motivo, item, cst, tipo, daNota) {
+    function add(linha, registro, campo, valor, motivo, item, cst, tipo, daNota, imposto) {
       cst = cst || '';
+      imposto = imposto || '';
       tipo = tipo || motivo;
       const ctx = daNota || CAMPOS_NOTA_VAZIOS;
+      const produto = registro === 'C170' ? infoItem.get(item) : undefined;
       inconsistencias.push({
-        linha, registro, campo, valor: valor === undefined ? '' : valor, motivo, item, cst,
-        nf: ctx.nf, serie: ctx.serie, data: ctx.data, operacao: ctx.operacao, chave: ctx.chave
+        linha, registro, campo, valor: valor === undefined ? '' : valor, motivo, item, imposto, cst,
+        nf: ctx.nf, serie: ctx.serie, data: ctx.data, operacao: ctx.operacao, chave: ctx.chave,
+        ncm: produto ? produto.ncm : '', descricao: produto ? produto.descricao : ''
       });
+      if (produto) {
+        let e = incPorNcm.get(produto.ncm);
+        if (!e) { e = { total: 0, quebra: new Map() }; incPorNcm.set(produto.ncm, e); }
+        e.total++;
+        soma(e.quebra, imposto + SEP_CHAVE + cst);
+      }
       if (daNota) {
         let n = porNota.get(daNota.linha);
         if (!n) {
@@ -117,20 +135,43 @@
         n.total++;
         n.tipos.add(tipo);
       }
-      soma(porCst, cst);
+      soma(porCst, imposto + SEP_CHAVE + cst);
       soma(porMotivo, tipo);
-      soma(porCstMotivo, cst + SEP_CHAVE + tipo);
+      soma(porCstMotivo, imposto + SEP_CHAVE + cst + SEP_CHAVE + tipo);
+    }
+
+    // Os NCMs com mais inconsistências (todas contam), mais inconsistências primeiro, empate pelo NCM.
+    // quebra: "ICMS 051:12 | ICMS 000:3" (CST vazio aparece como "(vazio)").
+    function rankingNcms() {
+      return Array.from(incPorNcm, ([ncm, e]) => ({ ncm, e })).sort((a, b) => b.e.total - a.e.total || a.ncm.localeCompare(b.ncm))
+        .slice(0, NCMS_NO_RANKING).map(({ ncm, e }) => {
+          const quebraLista = ordenar(Array.from(e.quebra, ([k, total]) => {
+            const p = k.split(SEP_CHAVE);
+            return { imposto: p[0], cst: p[1], total };
+          }));
+          return {
+            ncm, descricao: porNcm.get(ncm).descricao, total: e.total, quebraLista,
+            quebra: quebraLista.map(q => q.imposto + ' ' + (q.cst === '' ? '(vazio)' : q.cst) + ':' + q.total).join(SEP_MOTIVOS)
+          };
+        });
     }
 
     function resumo() {
       const lista = mapa => Array.from(mapa, ([k, total]) => ({ k, total }));
       return {
         total: inconsistencias.length,
-        porCst: ordenar(lista(porCst).map(e => ({ cst: e.k, total: e.total }))),
+        // NCMs com mais inconsistências (até 30) e o total de NCMs distintos com inconsistência.
+        ncmsTop: rankingNcms(),
+        totalNcmsComInconsistencia: incPorNcm.size,
+        // Agrupado por imposto + CST: o mesmo número pode existir em impostos diferentes (ICMS 051, PIS 51).
+        porCst: ordenar(lista(porCst).map(e => {
+          const p = e.k.split(SEP_CHAVE);
+          return { imposto: p[0], cst: p[1], total: e.total };
+        })),
         porMotivo: ordenar(lista(porMotivo).map(e => ({ motivo: e.k, total: e.total }))),
         porCstMotivo: ordenar(lista(porCstMotivo).map(e => {
           const p = e.k.split(SEP_CHAVE);
-          return { cst: p[0], motivo: p[1], total: e.total };
+          return { imposto: p[0], cst: p[1], motivo: p[2], total: e.total };
         })),
         // Notas (C100) com inconsistência em algum C170, contando todas; mais inconsistências primeiro.
         porNota: Array.from(porNota.values()).map(n => ({
@@ -149,6 +190,11 @@
         contagem.r0200++;
         const item = f[R0200.COD_ITEM] || '';
         itens.add(item);
+        const ncm = (f[R0200.COD_NCM] || '').trim();
+        let e = porNcm.get(ncm);
+        if (!e) { e = { descricao: f[R0200.DESCR_ITEM] || '', itens: 0, c170: 0, csts: new Map() }; porNcm.set(ncm, e); }
+        e.itens++;
+        infoItem.set(item, { ncm, descricao: f[R0200.DESCR_ITEM] || '' });
         const motivo = conferirNcm(f[R0200.COD_NCM], cfg.FORMATO_NCM);
         if (motivo) add(linha, '0200', 'COD_NCM', f[R0200.COD_NCM] || '', motivo, item);
       } else if (reg === 'C100') {
@@ -165,6 +211,8 @@
         if (!nota) contagem.c170SemC100++;
         const item = f[C170.COD_ITEM] || '';
         const cstIcms = (f[C170.CST_ICMS] || '').trim();
+        const eNcm = infoItem.has(item) ? porNcm.get(infoItem.get(item).ncm) : null;
+        if (eNcm) { eNcm.c170++; soma(eNcm.csts, cstIcms); }
         const nomeOperacao = nota ? OPERACAO[nota.operacao] : undefined;
         let semOperacao = false;
         if (!itens.has(item)) add(linha, 'C170', 'COD_ITEM', item, 'Item sem cadastro no registro 0200 (NCM não conferida)', item, '', undefined, nota);
@@ -173,31 +221,41 @@
           const cstLinha = imp.pisCofins ? cst : cstIcms; // valor da coluna CST do CSV
           const bruto = f[C170[imp.base]];
           const motivo = conferirCstFormato(cst, imp.formato);
-          if (motivo) { add(linha, 'C170', imp.cst, f[C170[imp.cst]] || '', motivo, item, cstLinha, undefined, nota); return; }
-          let esperado = imp.tabela[cst.slice(-2)];
+          if (motivo) { add(linha, 'C170', imp.cst, f[C170[imp.cst]] || '', motivo, item, cstLinha, undefined, nota, imp.nome); return; }
+          let esperado = null;
           let tipoOperacao = '';
-          if (!esperado && imp.pisCofins) {
-            // Regra validada pela fiscal da MAC: CST que exige base maior que 0, conforme a operação do C100.
+          if (imp.pisCofins) {
+            // Regras validadas pela fiscal da MAC, conforme a operação do C100: CST que não deve ter base
+            // (tabela 'sem base') e CST que exige base maior que 0.
             if (!nomeOperacao) { semOperacao = true; return; }
-            const exige = cfg.PIS_COFINS_EXIGE_BASE[nota.operacao === '0' ? 'entrada' : 'saida'] || [];
-            if (!exige.includes(cst)) return;
-            esperado = 'exige_base_operacao';
-            tipoOperacao = 'CST ' + imp.nome + ' de ' + nomeOperacao + ' deve ter base maior que 0, mas a base é 0';
+            const op = nota.operacao === '0' ? 'entrada' : 'saida';
+            if ((imp.tabela[op] || []).includes(cst)) {
+              esperado = 'sem_base_operacao';
+              tipoOperacao = 'CST ' + imp.nome + ' de ' + nomeOperacao + ' não deve ter base, mas a base é maior que 0';
+            } else if ((cfg.PIS_COFINS_EXIGE_BASE[op] || []).includes(cst)) {
+              esperado = 'exige_base_operacao';
+              tipoOperacao = 'CST ' + imp.nome + ' de ' + nomeOperacao + ' deve ter base maior que 0, mas a base é 0';
+            }
+          } else {
+            esperado = imp.tabela[cst.slice(-2)];
           }
           if (!esperado) return;
           const base = parseValor(bruto);
           if (Number.isNaN(base)) {
-            add(linha, 'C170', imp.base, bruto || '', 'Base de cálculo não é número', item, cstLinha, undefined, nota);
+            add(linha, 'C170', imp.base, bruto || '', 'Base de cálculo não é número', item, cstLinha, undefined, nota, imp.nome);
           } else if (esperado === 'sem_base' && base !== 0) {
-            add(linha, 'C170', imp.base, bruto, 'CST ' + cst + ' não tributado, mas a base é maior que 0', item, cstLinha, TIPO_NAO_TRIBUTADO, nota);
+            add(linha, 'C170', imp.base, bruto, 'CST ' + cst + ' não tributado, mas a base é maior que 0', item, cstLinha, TIPO_NAO_TRIBUTADO, nota, imp.nome);
           } else if (esperado === 'exige_base' && !(base > 0)) {
-            add(linha, 'C170', imp.base, bruto || '0', 'CST ' + cst + ' tributado, mas a base é 0', item, cstLinha, TIPO_TRIBUTADO, nota);
+            add(linha, 'C170', imp.base, bruto || '0', 'CST ' + cst + ' tributado, mas a base é 0', item, cstLinha, TIPO_TRIBUTADO, nota, imp.nome);
           } else if (esperado === 'exige_base_analise' && !(base > 0)) {
             add(linha, 'C170', imp.base, bruto || '0',
-              'CST ' + cst + ' deve ter base maior que 0, mas a base é 0: analisar caso a caso (pode ser operação sem base)', item, cstLinha, TIPO_ANALISE, nota);
+              'CST ' + cst + ' deve ter base maior que 0, mas a base é 0: analisar caso a caso (pode ser operação sem base)', item, cstLinha, TIPO_ANALISE, nota, imp.nome);
+          } else if (esperado === 'sem_base_operacao' && base > 0) {
+            add(linha, 'C170', imp.base, bruto, 'CST ' + imp.nome + ' ' + cst + ' de ' + nomeOperacao + ' não deve ter base, mas a base é ' + bruto.trim(),
+              item, cstLinha, tipoOperacao, nota, imp.nome);
           } else if (esperado === 'exige_base_operacao' && !(base > 0)) {
             add(linha, 'C170', imp.base, bruto || '0',
-              'CST ' + imp.nome + ' ' + cst + ' de ' + nomeOperacao + ' deve ter base maior que 0, mas a base é 0', item, cstLinha, tipoOperacao, nota);
+              'CST ' + imp.nome + ' ' + cst + ' de ' + nomeOperacao + ' deve ter base maior que 0, mas a base é 0', item, cstLinha, tipoOperacao, nota, imp.nome);
           }
         });
         if (semOperacao) contagem.pisCofinsSemOperacao++;
@@ -215,11 +273,22 @@
       partes.forEach(l => feedLine(l, contagem.linhas + 1));
     }
 
+    // NCMs distintos do 0200 (inclusive vazios e inválidos, como estão), mais C170 primeiro.
+    // { ncm, descricao, itens0200, linhasC170, cstIcms: [{ cst, total }] } (cstIcms: mais usado primeiro).
+    function listaNcms() {
+      return Array.from(porNcm, ([ncm, e]) => ({
+        ncm, descricao: e.descricao, itens0200: e.itens, linhasC170: e.c170,
+        inconsistencias: incPorNcm.has(ncm) ? incPorNcm.get(ncm).total : 0,
+        cstIcms: Array.from(e.csts, ([cst, total]) => ({ cst, total })).sort((a, b) => b.total - a.total || a.cst.localeCompare(b.cst))
+      })).sort((a, b) => b.linhasC170 - a.linhasC170 || a.ncm.localeCompare(b.ncm));
+    }
+
     function finish() {
       resto = resto.replace(/\r$/, '');
       if (resto !== '') { feedLine(resto, contagem.linhas + 1); resto = ''; }
       return {
         inconsistencias,
+        ncms: listaNcms(),
         total: inconsistencias.length,
         resumo: resumo(),
         linhasLidas: contagem.linhas,
@@ -243,21 +312,31 @@
     return c.finish();
   }
 
-  const CABECALHO_CSV = 'linha;registro;campo;valor;motivo;item;CST;NF;serie;data;operacao;chave';
+  const CABECALHO_CSV = 'linha;registro;campo;valor;motivo;item;imposto;CST;NF;serie;data;operacao;chave;ncm;descricao';
   const CABECALHO_CSV_NOTAS = 'NF;serie;data;operacao;chave;quantidade_inconsistencias;motivos';
-  const SEP_MOTIVOS = ' | ';
 
   // Campo de texto: sempre entre aspas duplas, aspas internas dobradas.
   function campoCsv(v) { return '"' + String(v === undefined || v === null ? '' : v).replace(/"/g, '""') + '"'; }
 
+  // Data do C100 (DDMMAAAA) para DD/MM/AAAA, que o Excel não trata como número. Vazia ou inválida fica como está.
+  function dataCsv(v) {
+    const t = String(v === undefined || v === null ? '' : v);
+    const m = /^(\d{2})(\d{2})(\d{4})$/.exec(t);
+    if (!m) return t;
+    const d = new Date(Date.UTC(+m[3], +m[2] - 1, +m[1]));
+    if (d.getUTCFullYear() !== +m[3] || d.getUTCMonth() !== +m[2] - 1 || d.getUTCDate() !== +m[1]) return t;
+    return m[1] + '/' + m[2] + '/' + m[3];
+  }
+
   function linhaCsv(i) {
     return i.linha + ';' + campoCsv(i.registro) + ';' + campoCsv(i.campo) + ';' + campoCsv(i.valor) + ';' +
-      campoCsv(i.motivo) + ';' + campoCsv(i.item) + ';' + campoCsv(i.cst) + ';' + campoCsv(i.nf) + ';' +
-      campoCsv(i.serie) + ';' + campoCsv(i.data) + ';' + campoCsv(i.operacao) + ';' + campoCsv(i.chave);
+      campoCsv(i.motivo) + ';' + campoCsv(i.item) + ';' + campoCsv(i.imposto) + ';' + campoCsv(i.cst) + ';' +
+      campoCsv(i.nf) + ';' + campoCsv(i.serie) + ';' + campoCsv(dataCsv(i.data)) + ';' + campoCsv(i.operacao) + ';' +
+      campoCsv(i.chave) + ';' + campoCsv(i.ncm) + ';' + campoCsv(i.descricao);
   }
 
   function linhaCsvNota(n) {
-    return campoCsv(n.nf) + ';' + campoCsv(n.serie) + ';' + campoCsv(n.data) + ';' + campoCsv(n.operacao) + ';' +
+    return campoCsv(n.nf) + ';' + campoCsv(n.serie) + ';' + campoCsv(dataCsv(n.data)) + ';' + campoCsv(n.operacao) + ';' +
       campoCsv(n.chave) + ';' + n.total + ';' + campoCsv((n.motivos || []).join(SEP_MOTIVOS));
   }
 
@@ -291,9 +370,26 @@
 
   function gerarCsvNotas(notas) { return gerarCsvNotasPartes(notas).join(''); }
 
+  // Terceiro CSV, uma linha por NCM distinto (resultado.ncms), para a fiscal consultar em lote na IOB:
+  // ncm, descricao_exemplo, itens_no_0200, linhas_c170, cst_icms_usados ("CST:qtd" separados por " | "),
+  // inconsistencias (total de inconsistências de C170 dos itens do NCM).
+  // CST de ICMS vazio aparece como "(vazio)".
+  const CABECALHO_CSV_NCMS = 'ncm;descricao_exemplo;itens_no_0200;linhas_c170;cst_icms_usados;inconsistencias';
+
+  function linhaCsvNcm(n) {
+    return campoCsv(n.ncm) + ';' + campoCsv(n.descricao) + ';' + n.itens0200 + ';' + n.linhasC170 + ';' +
+      campoCsv((n.cstIcms || []).map(c => (c.cst === '' ? '(vazio)' : c.cst) + ':' + c.total).join(SEP_MOTIVOS)) + ';' + (n.inconsistencias || 0);
+  }
+
+  function gerarCsvNcmsPartes(ncms, linhasPorParte) {
+    return csvPartes(CABECALHO_CSV_NCMS, ncms, linhaCsvNcm, linhasPorParte);
+  }
+
+  function gerarCsvNcms(ncms) { return gerarCsvNcmsPartes(ncms).join(''); }
+
   const api = {
     createChecker, checkText, parseValor, conferirNcm, conferirCstFormato,
-    gerarCsvPartes, gerarCsv, gerarCsvNotasPartes, gerarCsvNotas
+    gerarCsvPartes, gerarCsv, gerarCsvNotasPartes, gerarCsvNotas, gerarCsvNcmsPartes, gerarCsvNcms
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

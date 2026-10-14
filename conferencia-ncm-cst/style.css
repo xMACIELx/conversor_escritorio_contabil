@@ -33,6 +33,8 @@ h2 b {
 .incons td.num, .incons th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .incons td.val { font-family: Consolas, "Courier New", monospace; overflow-wrap: anywhere; }
 
+.incons td.produto { max-width: 18rem; overflow-wrap: anywhere; }
+
 .resumo { margin-top: 14px; }
 .resumo h3 { font-size: 1rem; margin: 0 0 6px; }
 .resumo-total { margin: 0 0 10px; font-weight: 600; }

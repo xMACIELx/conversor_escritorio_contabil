@@ -29,7 +29,7 @@
         <span class="drop-main" id="drop-main">Arraste o arquivo .txt do SPED Fiscal aqui</span>
         <span class="drop-sub" id="drop-sub">ou clique para procurar no computador</span>
       </label>
-      <p class="note">A conferência cobre o <strong>ICMS</strong> e o <strong>PIS/COFINS</strong> (CST × base de cálculo, conforme a operação da nota) e aponta em quais notas (C100) estão as inconsistências.</p>
+      <p class="note">A conferência cobre o <strong>ICMS</strong> e o <strong>PIS/COFINS</strong> (CST × base de cálculo, conforme a operação da nota, inclusive os CSTs que não podem ter base) e aponta em quais notas (C100) estão as inconsistências.</p>
       <p id="status" class="note" role="status" aria-live="polite">Nenhum arquivo escolhido.</p>
     </section>
 
@@ -49,7 +49,7 @@
           <div class="table-wrap">
             <table class="incons resumo-tab">
               <caption>Por CST</caption>
-              <thead><tr><th scope="col">CST</th><th scope="col" class="num">Quantidade</th></tr></thead>
+              <thead><tr><th scope="col">Imposto e CST</th><th scope="col" class="num">Quantidade</th></tr></thead>
               <tbody id="resumo-cst-body"></tbody>
             </table>
           </div>
@@ -60,6 +60,25 @@
               <tbody id="resumo-motivo-body"></tbody>
             </table>
           </div>
+        </div>
+      </div>
+
+      <div id="resumo-ncms" class="resumo" hidden>
+        <h3>NCMs com mais inconsistências</h3>
+        <p id="ncms-total" class="resumo-total"></p>
+        <div class="table-wrap">
+          <table class="incons resumo-tab" id="ncms-top">
+            <caption class="sr-only">NCMs com mais inconsistências</caption>
+            <thead>
+              <tr>
+                <th scope="col">NCM</th>
+                <th scope="col">Produto</th>
+                <th scope="col" class="num">Total</th>
+                <th scope="col">Por imposto e CST</th>
+              </tr>
+            </thead>
+            <tbody id="ncms-body"></tbody>
+          </table>
         </div>
       </div>
 
@@ -87,8 +106,10 @@
       <div id="csv-bar" class="csv-bar" hidden>
         <button id="csv" class="btn" type="button">Baixar CSV completo</button>
         <button id="csv-notas" class="btn" type="button">Baixar CSV por nota</button>
+        <button id="csv-ncms" class="btn" type="button" aria-describedby="csv-ncms-help">Baixar NCMs do arquivo (CSV)</button>
         <span id="csv-note" class="note" role="status" aria-live="polite"></span>
       </div>
+      <p id="csv-ncms-help" class="note">O CSV de NCMs lista cada NCM do arquivo uma só vez, com os CSTs de ICMS usados, para você conferir os NCMs em lote, por exemplo na IOB.</p>
 
       <div id="table-wrap" class="table-wrap" hidden>
         <table class="incons" id="incons">
@@ -101,6 +122,9 @@
               <th scope="col">Valor</th>
               <th scope="col">Motivo</th>
               <th scope="col">Item</th>
+              <th scope="col">NCM</th>
+              <th scope="col">Produto</th>
+              <th scope="col">Imposto</th>
               <th scope="col">CST</th>
               <th scope="col">NF</th>
               <th scope="col">Série</th>
