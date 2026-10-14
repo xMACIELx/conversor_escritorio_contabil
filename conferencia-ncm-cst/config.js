@@ -28,6 +28,14 @@
   //   1152: entrada por transferência; 5152: transferência de produção/mercadoria adquirida;
   //   5929: lançamento por emissão de cupom fiscal.
   const CFOPS_ICMS_SEM_BASE = ['1152', '5152', '5929'];
+  // ICMS, validado pela fiscal Daniela (14/10/2026): devolução de compra com ST (5411) com CST 010 pode ter
+  // base própria, porque deve espelhar a nota de compra. Nestes CFOPs não se aponta "CST não tributado, mas a
+  // base é maior que 0" para o CST final 10.
+  const CFOPS_DEVOLUCAO_COM_BASE = ['5411'];
+  // ICMS CST x90 de entrada com base 0, validado pela fiscal Daniela (14/10/2026): fornecedor do Simples Nacional
+  // não destaca ICMS no C170; o crédito vem no texto complementar (C110 -> 0450). A nota é aceita quando algum
+  // desses textos, sem acento e em maiúsculas, casa com o padrão abaixo (aceita "DO" ou "DE" antes de ICMS).
+  const PADRAO_CREDITO_ICMS_SIMPLES = /APROVEITAMENTO\s+DO\s+CREDITO\s+D[OE]\s+ICMS/;
 
   // PIS/COFINS, validado pela fiscal da MAC: CSTs que NÃO devem ter base (base zero), conforme a operação
   // (IND_OPER do C100: 0 = entrada, 1 = saída). Vale para CST_PIS (VL_BC_PIS) e CST_COFINS (VL_BC_COFINS).
@@ -54,7 +62,7 @@
   const FORMATO_CST_PIS_COFINS = /^(0[1-9]|[1-9]\d)$/;
 
   const api = {
-    REGRA_BASE_VALIDADA, BASE_POR_CST_ICMS, CFOPS_ICMS_90_SEM_BASE, CFOPS_ICMS_SEM_BASE, BASE_POR_CST_PIS_COFINS, PIS_COFINS_EXIGE_BASE,
+    REGRA_BASE_VALIDADA, BASE_POR_CST_ICMS, CFOPS_ICMS_90_SEM_BASE, CFOPS_ICMS_SEM_BASE, CFOPS_DEVOLUCAO_COM_BASE, PADRAO_CREDITO_ICMS_SIMPLES, BASE_POR_CST_PIS_COFINS, PIS_COFINS_EXIGE_BASE,
     FORMATO_NCM, FORMATO_CST_ICMS, FORMATO_CST_PIS_COFINS
   };
 

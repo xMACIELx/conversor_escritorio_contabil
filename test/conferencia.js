@@ -108,7 +108,8 @@ module.exports = function (check) {
     const e = u90(cst, '1556', '10,00');
     check('CST ' + cst + ' com CFOP da lista (1556) com base: erro', e.length === 1 && e[0].motivo === 'CST ' + cst + ' com CFOP 1556 não deveria ter base' && e[0].cfop === '1556', JSON.stringify(e));
     const t = u90(cst, '1102', '0,00');
-    check('CST ' + cst + ' com CFOP fora da lista (1102) sem base: erro', t.length === 1 && t[0].motivo === 'CST ' + cst + ' com CFOP 1102 deveria ser tributado, mas a base é 0' && t[0].cfop === '1102', JSON.stringify(t));
+    check('CST ' + cst + ' com CFOP de entrada fora da lista (1102) sem base e sem C110: erro', t.length === 1 && t[0].motivo === 'CST ' + cst + ' com CFOP 1102, base 0 e sem C110 (sem informação de crédito)' && t[0].cfop === '1102', JSON.stringify(t));
+    check('CST ' + cst + ' com CFOP de saída (5102) sem base mantém "deveria ser tributado"', u90(cst, '5102', '0,00')[0].motivo === 'CST ' + cst + ' com CFOP 5102 deveria ser tributado, mas a base é 0');
     check('CST ' + cst + ' com CFOP fora da lista com base: ok', u90(cst, '1102', '10,00').length === 0);
   });
   ['1556', '2556', '1407', '2407', '1551', '2551', '1406', '2406'].forEach(cfop => {
@@ -140,6 +141,40 @@ module.exports = function (check) {
   check('CST fora da tabela (02, 80) não é conferido', unica('002', '0,00').length === 0 && unica('080', '5,00').length === 0);
   check('PIS/COFINS sem C100 (operação desconhecida) não são conferidos quanto à base',
     K.checkText(r0200('C1', '12345678') + '\n' + r170('C1', { icms: '000', bcIcms: '1,00', pis: '04', bcPis: '9,00', cofins: '01', bcCofins: '0' })).total === 0);
+
+  // CST 090 de entrada com crédito do Simples Nacional no C110/0450, e CST 010 + CFOP 5411 (SYN-66)
+  const CRED = 'DOCUMENTO EMITIDO POR ME OU EPP, OPTANTE PELO SIMPLES NACIONAL, PERMITE O APROVEITAMENTO DO CRÉDITO DE ICMS NO VALOR DE R$ 53,93, CORRESPONDENTE A ALÍQUOTA DE 2,82%';
+  const c100 = (nf) => '|C100|0|1|F|55|00|001|' + nf + '|';
+  const item090 = (cfop) => r170('C1', { icms: '090', cfop: cfop || '1102', bcIcms: '0,00', pis: '01', cofins: '01' });
+  const nota090 = (linhas0450, c110s, cfop) => K.checkText([
+    '|0000|017|0|01012026|31012026|EMPRESA FICTICIA|', r0200('C1', '12345678'), ...linhas0450,
+    c100('1'), ...c110s, item090(cfop), '|C990|5|'
+  ].join('\n'));
+  const icms = res => res.inconsistencias.filter(i => i.campo === 'VL_BC_ICMS');
+  const comTexto = nota090(['|0450|1141|' + CRED + '|'], ['|C110|1141||']);
+  check('C110 + 0450 com texto de crédito: não aponta e conta no informativo', icms(comTexto).length === 0 && comTexto.total === 0 && comTexto.resumo.cst90CreditoSimples === 1, JSON.stringify(comTexto.inconsistencias));
+  const semTexto = nota090(['|0450|1141|INFORMACAO QUALQUER|'], ['|C110|1141||']);
+  check('C110 sem texto de crédito: aponta', icms(semTexto).length === 1 && icms(semTexto)[0].motivo === 'CST 090 com CFOP 1102, base 0 e sem informação de crédito de ICMS no C110/0450 (fornecedor do Simples Nacional?)' && semTexto.resumo.cst90CreditoSimples === 0, JSON.stringify(semTexto.inconsistencias));
+  const semC110 = nota090(['|0450|1141|' + CRED + '|'], []);
+  check('sem C110: aponta mesmo existindo 0450', icms(semC110).length === 1 && icms(semC110)[0].motivo === 'CST 090 com CFOP 1102, base 0 e sem C110 (sem informação de crédito)');
+  check('tipos dos dois motivos novos são distintos no resumo', new Set([semTexto, semC110].map(x => x.resumo.porMotivo[0].motivo)).size === 2);
+  const minusc = nota090(['|0450|7|permite o aproveitamento do credito do icms no valor de r$ 1,00, correspondente a aliquota de 1,25%|'], ['|C110|7||']);
+  check('texto em minúsculas, sem acento e "CREDITO DO ICMS": não aponta', icms(minusc).length === 0 && minusc.resumo.cst90CreditoSimples === 1);
+  const acento = nota090(['|0450|7|Permite o Aproveitamento do Crédito de ICMS|'], ['|C110|7||']);
+  check('texto com acento e maiúsculas/minúsculas misturadas: não aponta', icms(acento).length === 0);
+  const txtCompl = nota090([], ['|C110|9|PERMITE O APROVEITAMENTO DO CRÉDITO DE ICMS NO VALOR DE R$ 2,00|']);
+  check('TXT_COMPL do C110 (sem 0450) com texto de crédito: não aponta', icms(txtCompl).length === 0 && txtCompl.resumo.cst90CreditoSimples === 1);
+  const doisC110 = nota090(['|0450|1|OUTRA INFORMACAO|', '|0450|2|' + CRED + '|'], ['|C110|1||', '|C110|2||']);
+  check('crédito em um dos C110 da nota: não aponta', icms(doisC110).length === 0);
+  const entre = K.checkText([r0200('C1', '12345678'), '|0450|1|' + CRED + '|', c100('1'), '|C110|1||', item090(), c100('2'), item090(), '|C990|5|'].join('\n'));
+  check('C110 vale só para a sua nota: nota seguinte sem C110 aponta', icms(entre).length === 1 && /sem C110/.test(icms(entre)[0].motivo) && icms(entre)[0].nf === '2');
+  check('CST 090 com base > 0 e CFOP fora da lista segue sem apontar', K.checkText([r0200('C1', '12345678'), c100('1'), r170('C1', { icms: '090', cfop: '1102', bcIcms: '10,00', pis: '01', cofins: '01' })].join('\n')).total === 0);
+  check('CST 090 de saída sem base e CFOP 1152 seguem como antes', u90('090', '1152', '0,00').length === 0);
+  check('CSV completo não traz os itens aceitos', K.gerarCsv(comTexto.inconsistencias).split('\r\n').filter(Boolean).length === 1);
+  const u5411 = (cst, bc) => K.checkText([r0200('C1', '12345678'), '|C100|1|1|F|55|00|001|47939|', r170('C1', { icms: cst, cfop: '5411', bcIcms: bc, pis: '01', cofins: '01' })].join('\n')).inconsistencias.filter(i => i.campo === 'VL_BC_ICMS');
+  check('CST 010 + CFOP 5411 com base: não aponta', u5411('010', '100,00').length === 0 && u5411('210', '5,00').length === 0);
+  check('CST 040 + CFOP 5411 com base: continua apontando', u5411('040', '100,00').length === 1);
+  check('CST 010 + outro CFOP com base: continua apontando', u90('010', '5102', '10,00').length === 1);
 
   // CST de 4 dígitos (possível CSOSN do Simples)
   const q = K.checkText([r0200('D1', '12345678'),
@@ -179,7 +214,7 @@ module.exports = function (check) {
   check('resumo por CST soma o total', res.porCst.reduce((s, e) => s + e.total, 0) === res.total);
   check('resumo por motivo agrupa sem o texto variável',
     motDe('CST deve ter base maior que 0, mas a base é 0: analisar caso a caso') === 2500 &&
-    motDe('CST 90 deveria ser tributado pelo CFOP, mas a base é 0') === 1700 &&
+    motDe('CST 90 de entrada com base 0 e sem C110 (sem informação de crédito)') === 1700 &&
     motDe('Item sem cadastro no registro 0200 (NCM não conferida)') === 300 &&
     motDe('NCM fora do formato de 8 dígitos') === 1 && res.porMotivo.length === 5 &&
     res.porMotivo.some(e => /^CST com 4 dígitos/.test(e.motivo) && e.total === 1000), JSON.stringify(res.porMotivo));
