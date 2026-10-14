@@ -29,7 +29,7 @@
         <span class="drop-main" id="drop-main">Arraste o arquivo .txt do SPED Fiscal aqui</span>
         <span class="drop-sub" id="drop-sub">ou clique para procurar no computador</span>
       </label>
-      <p class="note">A conferência cobre o <strong>ICMS</strong> e o <strong>PIS/COFINS</strong> (CST × base de cálculo, conforme a operação da nota) e aponta em quais notas (C100) estão as inconsistências.</p>
+      <p class="note">A conferência cobre o <strong>ICMS</strong> e o <strong>PIS/COFINS</strong> (CST × base de cálculo, conforme a operação da nota, inclusive os CSTs que não podem ter base) e aponta em quais notas (C100) estão as inconsistências.</p>
       <p id="status" class="note" role="status" aria-live="polite">Nenhum arquivo escolhido.</p>
     </section>
 
@@ -87,8 +87,10 @@
       <div id="csv-bar" class="csv-bar" hidden>
         <button id="csv" class="btn" type="button">Baixar CSV completo</button>
         <button id="csv-notas" class="btn" type="button">Baixar CSV por nota</button>
+        <button id="csv-ncms" class="btn" type="button" aria-describedby="csv-ncms-help">Baixar NCMs do arquivo (CSV)</button>
         <span id="csv-note" class="note" role="status" aria-live="polite"></span>
       </div>
+      <p id="csv-ncms-help" class="note">O CSV de NCMs lista cada NCM do arquivo uma só vez, com os CSTs de ICMS usados, para você conferir os NCMs em lote, por exemplo na IOB.</p>
 
       <div id="table-wrap" class="table-wrap" hidden>
         <table class="incons" id="incons">

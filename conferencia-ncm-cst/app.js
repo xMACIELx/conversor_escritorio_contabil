@@ -71,8 +71,12 @@
 
     renderResumo(res.resumo);
     renderNotas(res.resumo.porNota);
-    current = { inconsistencias: res.inconsistencias, notas: res.resumo.porNota, name };
-    $('csv-bar').hidden = res.total === 0;
+    current = { inconsistencias: res.inconsistencias, notas: res.resumo.porNota, ncms: res.ncms, name };
+    // O CSV de NCMs vale mesmo sem inconsistências; os outros dois só quando há o que listar.
+    $('csv-bar').hidden = false;
+    $('csv').hidden = res.total === 0;
+    $('csv-notas').hidden = res.total === 0;
+    $('csv-ncms').hidden = false;
     $('csv-note').textContent = '';
   }
 
@@ -120,6 +124,11 @@
   function downloadCsvNotas() {
     if (!current) return;
     save(Conferencia.gerarCsvNotasPartes(current.notas), '_notas.csv', current.notas.length);
+  }
+
+  function downloadCsvNcms() {
+    if (!current) return;
+    save(Conferencia.gerarCsvNcmsPartes(current.ncms), '_ncms.csv', current.ncms.length);
   }
 
   function save(partes, sufixo, linhas) {
@@ -171,6 +180,7 @@
 
   $('csv').addEventListener('click', downloadCsv);
   $('csv-notas').addEventListener('click', downloadCsvNotas);
+  $('csv-ncms').addEventListener('click', downloadCsvNcms);
   const drop = $('drop');
   $('file').addEventListener('change', e => { run(e.target.files[0]); e.target.value = ''; });
   drop.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('file').click(); } });
