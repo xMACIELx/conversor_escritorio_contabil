@@ -3,10 +3,8 @@
 
   const $ = id => document.getElementById(id);
   const CHUNK_BYTES = 4 * 1024 * 1024;
-  // Acima disso a tabela mostra só as primeiras linhas; o total continua exato no resumo.
-  const MAX_ROWS = 2000;
-  // A lista de notas do resumo também é limitada na tela; o CSV por nota traz todas.
-  const MAX_NOTAS = 200;
+  // A lista de notas do resumo é limitada na tela; o CSV por nota traz todas.
+  const MAX_NOTAS = 50;
   // Tamanho máximo da descrição do produto na célula (o title traz o texto inteiro).
   const MAX_DESCRICAO = 40;
   let running = false;
@@ -66,26 +64,9 @@
       (res.c170PisCofinsSemOperacao ? ' PIS/COFINS não conferido em ' + fmt(res.c170PisCofinsSemOperacao) +
         ' item(ns) sem nota (C100) para indicar a operação.' : '');
 
-    const body = $('incons-body');
-    body.textContent = '';
-    res.inconsistencias.slice(0, MAX_ROWS).forEach(i => {
-      const tr = el('tr');
-      tr.append(el('td', 'num', String(i.linha)), el('td', null, i.registro), el('td', null, i.campo),
-        el('td', 'val', i.valor === '' ? '(vazio)' : i.valor), el('td', null, i.motivo), el('td', null, i.item || '—'),
-        el('td', 'val', i.ncm || '—'), celulaProduto(i.descricao),
-        el('td', null, i.imposto || '—'), el('td', null, i.cst || '—'), el('td', null, i.nf || '—'), el('td', null, i.serie || '—'),
-        el('td', null, fmtData(i.data)), el('td', null, fmtOperacao(i.operacao)));
-      body.append(tr);
-    });
-    $('table-wrap').hidden = res.total === 0;
-    const tr = $('truncated');
-    tr.hidden = res.total <= MAX_ROWS;
-    tr.textContent = 'Mostrando as primeiras ' + fmt(MAX_ROWS) + ' de ' + fmt(res.total) +
-      ' inconsistências. O CSV traz todas.';
-
     renderResumo(res.resumo);
     renderNcmsTop(res.resumo);
-    renderNotas(res.resumo.porNota);
+    renderNotas(res.resumo);
     current = { inconsistencias: res.inconsistencias, notas: res.resumo.porNota, ncms: res.ncms, name };
     // O CSV de NCMs vale mesmo sem inconsistências; os outros dois só quando há o que listar.
     $('csv-bar').hidden = false;
@@ -105,7 +86,7 @@
     });
   }
 
-  // Contagens do core, sobre todas as inconsistências (não só as 2.000 exibidas).
+  // Contagens do core, sobre todas as inconsistências.
   function renderResumo(r) {
     $('resumo-cst').hidden = r.total === 0;
     $('resumo-total').textContent = 'Total: ' + fmt(r.total) + ' inconsistência(s).';
@@ -129,22 +110,24 @@
     });
   }
 
-  // Notas (C100) com inconsistência: total e lista limitada a MAX_NOTAS, mais inconsistências primeiro.
-  function renderNotas(notas) {
+  // Notas (C100) com inconsistência: o core já ordena por prioridade; a tela mostra as primeiras MAX_NOTAS.
+  function renderNotas(r) {
+    const notas = r.porNota;
+    const total = r.totalNotasComInconsistencia !== undefined ? r.totalNotasComInconsistencia : notas.length;
     $('resumo-notas').hidden = notas.length === 0;
-    $('notas-total').textContent = 'Total: ' + fmt(notas.length) + ' nota(s) com inconsistência.';
+    $('notas-total').textContent = 'Total: ' + fmt(total) + ' nota(s) com inconsistência.';
     const body = $('notas-body');
     body.textContent = '';
-    notas.slice(0, MAX_NOTAS).forEach(n => {
+    const mostradas = notas.slice(0, MAX_NOTAS);
+    mostradas.forEach(n => {
       const tr = el('tr');
       tr.append(el('td', null, n.nf || '—'), el('td', null, n.serie || '—'), el('td', null, fmtData(n.data)),
         el('td', null, fmtOperacao(n.operacao)), el('td', 'num', fmt(n.total)));
       body.append(tr);
     });
     const tn = $('notas-truncated');
-    tn.hidden = notas.length <= MAX_NOTAS;
-    tn.textContent = 'Mostrando as ' + fmt(MAX_NOTAS) + ' notas com mais inconsistências, de ' + fmt(notas.length) +
-      '. O CSV por nota traz todas.';
+    tn.hidden = total <= mostradas.length;
+    tn.textContent = 'Mostrando as ' + fmt(mostradas.length) + ' de ' + fmt(total) + ' notas; o CSV traz todas.';
   }
 
   function downloadCsv() {

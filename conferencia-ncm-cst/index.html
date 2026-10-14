@@ -29,7 +29,7 @@
         <span class="drop-main" id="drop-main">Arraste o arquivo .txt do SPED Fiscal aqui</span>
         <span class="drop-sub" id="drop-sub">ou clique para procurar no computador</span>
       </label>
-      <p class="note">A conferência cobre o <strong>ICMS</strong> e o <strong>PIS/COFINS</strong> (CST × base de cálculo, conforme a operação da nota, inclusive os CSTs que não podem ter base) e aponta em quais notas (C100) estão as inconsistências.</p>
+      <p class="note">A conferência cobre o <strong>ICMS</strong> e o <strong>PIS/COFINS</strong> (CST × base de cálculo, conforme a operação da nota, inclusive os CSTs que não podem ter base). A tela mostra só os resumos; o detalhe item a item (linha, item, NCM, nota) está no CSV completo.</p>
       <p id="status" class="note" role="status" aria-live="polite">Nenhum arquivo escolhido.</p>
     </section>
 
@@ -42,13 +42,21 @@
       <div id="banner" class="banner" role="status"></div>
       <p id="summary" class="note"></p>
 
+      <div id="csv-bar" class="csv-bar" hidden>
+        <button id="csv" class="btn" type="button">Baixar CSV completo</button>
+        <button id="csv-notas" class="btn" type="button">Baixar CSV por nota</button>
+        <button id="csv-ncms" class="btn" type="button" aria-describedby="csv-ncms-help">Baixar NCMs do arquivo (CSV)</button>
+        <span id="csv-note" class="note" role="status" aria-live="polite"></span>
+      </div>
+      <p id="csv-ncms-help" class="note">O CSV de NCMs lista cada NCM do arquivo uma só vez, com os CSTs de ICMS usados, para você conferir os NCMs em lote, por exemplo na IOB.</p>
+
       <div id="resumo-cst" class="resumo" hidden>
         <h3>Resumo das inconsistências</h3>
         <p id="resumo-total" class="resumo-total"></p>
         <div class="resumo-grid">
           <div class="table-wrap">
             <table class="incons resumo-tab">
-              <caption>Por CST</caption>
+              <caption>Por imposto e CST</caption>
               <thead><tr><th scope="col">Imposto e CST</th><th scope="col" class="num">Quantidade</th></tr></thead>
               <tbody id="resumo-cst-body"></tbody>
             </table>
@@ -103,39 +111,6 @@
         <p id="notas-truncated" class="note" hidden></p>
       </div>
 
-      <div id="csv-bar" class="csv-bar" hidden>
-        <button id="csv" class="btn" type="button">Baixar CSV completo</button>
-        <button id="csv-notas" class="btn" type="button">Baixar CSV por nota</button>
-        <button id="csv-ncms" class="btn" type="button" aria-describedby="csv-ncms-help">Baixar NCMs do arquivo (CSV)</button>
-        <span id="csv-note" class="note" role="status" aria-live="polite"></span>
-      </div>
-      <p id="csv-ncms-help" class="note">O CSV de NCMs lista cada NCM do arquivo uma só vez, com os CSTs de ICMS usados, para você conferir os NCMs em lote, por exemplo na IOB.</p>
-
-      <div id="table-wrap" class="table-wrap" hidden>
-        <table class="incons" id="incons">
-          <caption class="sr-only">Inconsistências encontradas</caption>
-          <thead>
-            <tr>
-              <th scope="col" class="num">Linha</th>
-              <th scope="col">Registro</th>
-              <th scope="col">Campo</th>
-              <th scope="col">Valor</th>
-              <th scope="col">Motivo</th>
-              <th scope="col">Item</th>
-              <th scope="col">NCM</th>
-              <th scope="col">Produto</th>
-              <th scope="col">Imposto</th>
-              <th scope="col">CST</th>
-              <th scope="col">NF</th>
-              <th scope="col">Série</th>
-              <th scope="col">Data</th>
-              <th scope="col">Operação</th>
-            </tr>
-          </thead>
-          <tbody id="incons-body"></tbody>
-        </table>
-      </div>
-      <p id="truncated" class="note" hidden></p>
     </section>
   </main>
 
