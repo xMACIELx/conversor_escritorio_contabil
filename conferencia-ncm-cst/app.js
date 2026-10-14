@@ -5,6 +5,7 @@
   const CHUNK_BYTES = 4 * 1024 * 1024;
   // A lista de notas do resumo é limitada na tela; o CSV por nota traz todas.
   const MAX_NOTAS = 50;
+  const MAX_FORNECEDORES = 50;
   // Tamanho máximo da descrição do produto na célula (o title traz o texto inteiro).
   const MAX_DESCRICAO = 40;
   let running = false;
@@ -64,12 +65,16 @@
       (res.c170PisCofinsSemOperacao ? ' PIS/COFINS não conferido em ' + fmt(res.c170PisCofinsSemOperacao) +
         ' item(ns) sem nota (C100) para indicar a operação.' : '') +
       (res.resumo.cst90CreditoSimples ? ' ' + fmt(res.resumo.cst90CreditoSimples) +
-        ' item(ns) de CST 090 com crédito do Simples Nacional informado no C110/0450 (aceitos, fora do total de inconsistências).' : '');
+        ' item(ns) de CST 090 com crédito do Simples Nacional informado no C110/0450 (aceitos, fora do total de inconsistências).' : '') +
+      (res.resumo.cst051Aceitos ? ' ' + fmt(res.resumo.cst051Aceitos) +
+        ' itens de CST 051 com base 0 aceitos (produtor rural com CPF no 0150 / sucata com diferimento total).' : '');
 
     renderResumo(res.resumo);
+    renderConferirXml(res.resumo.conferirXml);
     renderNcmsTop(res.resumo);
     renderNotas(res.resumo);
-    current = { inconsistencias: res.inconsistencias, notas: res.resumo.porNota, ncms: res.ncms, name };
+    current = { inconsistencias: res.inconsistencias, notas: res.resumo.porNota, ncms: res.ncms, conferirXml: res.resumo.conferirXml.fornecedores, name };
+    $('csv-xml').hidden = res.resumo.conferirXml.totalItens === 0;
     // O CSV de NCMs vale mesmo sem inconsistências; os outros dois só quando há o que listar.
     $('csv-bar').hidden = false;
     $('csv').hidden = res.total === 0;
@@ -112,6 +117,25 @@
     });
   }
 
+  // Bloco fora do total: CST 090 de entrada sem crédito informado; o core já ordena os fornecedores por itens.
+  function renderConferirXml(x) {
+    $('resumo-xml').hidden = x.totalItens === 0;
+    $('xml-total').textContent = fmt(x.totalItens) + ' item(ns) em ' + fmt(x.totalNotas) + ' nota(s) de ' + fmt(x.fornecedores.length) + ' fornecedor(es) a conferir (fora do total de inconsistências).';
+    $('xml-aviso').textContent = x.aviso;
+    const body = $('xml-body');
+    body.textContent = '';
+    const mostrados = x.fornecedores.slice(0, MAX_FORNECEDORES);
+    mostrados.forEach(f => {
+      const tr = el('tr');
+      tr.append(el('td', null, f.fornecedor || '—'), el('td', 'val', f.cnpj || f.cpf || '—'),
+        el('td', 'num', fmt(f.qtdNotas)), el('td', 'num', fmt(f.qtdItens)));
+      body.append(tr);
+    });
+    const t = $('xml-truncated');
+    t.hidden = x.fornecedores.length <= mostrados.length;
+    t.textContent = 'Mostrando os ' + fmt(mostrados.length) + ' de ' + fmt(x.fornecedores.length) + ' fornecedores; o CSV traz todos.';
+  }
+
   // Notas (C100) com inconsistência: o core já ordena por prioridade; a tela mostra as primeiras MAX_NOTAS.
   function renderNotas(r) {
     const notas = r.porNota;
@@ -145,6 +169,11 @@
   function downloadCsvNcms() {
     if (!current) return;
     save(Conferencia.gerarCsvNcmsPartes(current.ncms), '_ncms.csv', current.ncms.length);
+  }
+
+  function downloadCsvConferirXml() {
+    if (!current) return;
+    save(Conferencia.gerarCsvConferirXmlPartes(current.conferirXml), '_conferir_xml.csv', current.conferirXml.length);
   }
 
   function save(partes, sufixo, linhas) {
@@ -197,6 +226,7 @@
   $('csv').addEventListener('click', downloadCsv);
   $('csv-notas').addEventListener('click', downloadCsvNotas);
   $('csv-ncms').addEventListener('click', downloadCsvNcms);
+  $('csv-xml').addEventListener('click', downloadCsvConferirXml);
   const drop = $('drop');
   $('file').addEventListener('change', e => { run(e.target.files[0]); e.target.value = ''; });
   drop.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('file').click(); } });

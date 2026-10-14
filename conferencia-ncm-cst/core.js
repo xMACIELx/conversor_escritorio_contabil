@@ -4,7 +4,8 @@
  *
  * Registros lidos (campos separados por "|", índice 0 é vazio por causa do "|" inicial):
  *   0200 cadastro do item:  [2] COD_ITEM | [8] COD_NCM
- *   C100 nota (NF):         [2] IND_OPER (0 entrada, 1 saída) | [7] SER | [8] NUM_DOC | [9] CHV_NFE | [10] DT_DOC
+ *   C100 nota (NF):         [2] IND_OPER (0 entrada, 1 saída) | [4] COD_PART (consulta o 0150) | [7] SER | [8] NUM_DOC | [9] CHV_NFE | [10] DT_DOC
+ *   0150 participante:     [2] COD_PART | [3] NOME | [5] CNPJ | [6] CPF
  *   0450 informação complementar: [2] COD_INF | [3] TXT
  *   C110 informação complementar da nota: [2] COD_INF (consulta o 0450) | [3] TXT_COMPL
  *   C170 item da nota:     [2] NUM_ITEM | [3] COD_ITEM | [10] CST_ICMS | [11] CFOP | [13] VL_BC_ICMS
@@ -24,9 +25,10 @@
   const Config = typeof module !== 'undefined' && module.exports ? require('./config.js') : root.ConferenciaConfig;
 
   const R0200 = { COD_ITEM: 2, DESCR_ITEM: 3, COD_NCM: 8 };
+  const R0150 = { COD_PART: 2, NOME: 3, CNPJ: 5, CPF: 6 };
   const R0450 = { COD_INF: 2, TXT: 3 };
   const C110 = { COD_INF: 2, TXT_COMPL: 3 };
-  const C100 = { IND_OPER: 2, SER: 7, NUM_DOC: 8, CHV_NFE: 9, DT_DOC: 10 };
+  const C100 = { IND_OPER: 2, COD_PART: 4, SER: 7, NUM_DOC: 8, CHV_NFE: 9, DT_DOC: 10 };
   const C170 = {
     COD_ITEM: 3, CST_ICMS: 10, CFOP: 11, VL_BC_ICMS: 13,
     CST_PIS: 25, VL_BC_PIS: 26, ALIQ_PIS: 27, VL_PIS: 30,
@@ -85,9 +87,14 @@
   // ICMS em CFOP sem base (5152, 5929), para qualquer CST.
   const TIPO_CFOP_SEM_BASE = 'CFOP 5152/5929 não deveria ter base de ICMS, mas a base é > 0';
 
-  // ICMS com CST final 90 de entrada e base 0, sem crédito de ICMS do Simples Nacional no C110/0450.
-  const TIPO_90_SEM_CREDITO_C110 = 'CST 90 de entrada com base 0 e sem informação de crédito de ICMS no C110/0450 (fornecedor do Simples Nacional?)';
-  const TIPO_90_SEM_C110 = 'CST 90 de entrada com base 0 e sem C110 (sem informação de crédito)';
+  // ICMS com CST final 90 de entrada e base 0, sem crédito de ICMS do Simples Nacional no C110/0450: não é erro
+  // automático; vai para o bloco "a conferir no XML (STR)", por fornecedor.
+  const MOTIVO_SEM_C110 = 'sem C110';
+  const MOTIVO_C110_SEM_CREDITO = 'C110 sem texto de crédito';
+  const AVISO_CONFERIR_XML = 'CST 090 de entrada com base 0 sem crédito de ICMS informado no C110/0450: confira no XML se o fornecedor do Simples ' +
+    'tem direito a crédito; se não tiver, o CST 090 sem base está correto.';
+  // Quantas NFs aparecem na coluna "notas" do CSV por fornecedor (o resto vira "… (+N)").
+  const MAX_NOTAS_CONFERIR = 50;
 
   // Texto sem acento e em maiúsculas, para casar o padrão de crédito de ICMS.
   function normalizarTexto(t) { return String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase(); }
@@ -131,9 +138,13 @@
     const porNota = new Map(); // chave = linha do C100; só notas com inconsistência
     const contagem = { linhas: 0, r0200: 0, c170: 0, c100: 0, c170SemC100: 0, pisCofinsSemOperacao: 0 };
     const textos0450 = new Map(); // COD_INF -> TXT do 0450
+    const participantes = new Map(); // COD_PART do 0150 -> { nome, cnpj, cpf }
+    const conferirXml = new Map(); // fornecedor (CNPJ, CPF ou COD_PART) -> { nome, cnpj, cpf, itens, notas: Map(linha do C100 -> NF), cfops: Set, motivos: Set }
     let nota = null; // C100 corrente: { linha, nf, serie, data, operacao, chave }
     let notaC110 = { tem: false, textos: [] }; // C110 da nota corrente: textos do 0450 consultado e TXT_COMPL
     let creditoSimples = 0; // itens de CST 90 de entrada, base 0, aceitos por trazerem o crédito no C110/0450
+    let itensConferirXml = 0; // itens de CST 90 de entrada, base 0, sem crédito informado: a conferir no XML
+    let cst051Aceitos = 0; // itens de CST 51 com base 0 aceitos (entrada de produtor rural com CPF no 0150; saída de sucata, CFOP 5102)
     let resto = '';
     let cfopC170 = ''; // CFOP do C170 em conferência, gravado em cada inconsistência dele
 
@@ -192,10 +203,48 @@
         });
     }
 
+    // CST 090 de entrada, base 0, sem crédito informado: agrupa por fornecedor (participante da nota no 0150).
+    function registrarConferirXml(motivo) {
+      const cod = nota ? nota.codPart : '';
+      const p = participantes.get(cod) || { nome: '', cnpj: '', cpf: '' };
+      const chave = p.cnpj || p.cpf || ('COD:' + cod);
+      let e = conferirXml.get(chave);
+      if (!e) { e = { nome: p.nome, cnpj: p.cnpj, cpf: p.cpf, itens: 0, notas: new Map(), cfops: new Set(), motivos: new Set() }; conferirXml.set(chave, e); }
+      e.itens++;
+      if (nota) e.notas.set(nota.linha, nota.nf);
+      e.cfops.add(cfopC170);
+      e.motivos.add(motivo);
+      itensConferirXml++;
+    }
+
+    // Fornecedores a conferir no XML, mais itens primeiro (empate pelo nome).
+    function listaConferirXml() {
+      return Array.from(conferirXml.values()).map(e => {
+        const nfs = Array.from(new Set(e.notas.values()));
+        const notas = nfs.length > MAX_NOTAS_CONFERIR ? nfs.slice(0, MAX_NOTAS_CONFERIR).join(', ') + ', … (+' + (nfs.length - MAX_NOTAS_CONFERIR) + ')' : nfs.join(', ');
+        return {
+          fornecedor: e.nome, cnpj: e.cnpj, cpf: e.cpf, qtdNotas: e.notas.size, qtdItens: e.itens,
+          cfops: Array.from(e.cfops).sort().join(', '), motivo: Array.from(e.motivos).join(SEP_MOTIVOS), notas
+        };
+      }).sort((a, b) => b.qtdItens - a.qtdItens || a.fornecedor.localeCompare(b.fornecedor) || a.cnpj.localeCompare(b.cnpj));
+    }
+
     function resumo() {
       const lista = mapa => Array.from(mapa, ([k, total]) => ({ k, total }));
+      const fornecedoresConferir = listaConferirXml();
       return {
         total: inconsistencias.length,
+        // Informativo, fora do total: itens de CST 51 com base 0 aceitos (entrada de produtor rural, com CPF no 0150,
+        // e saída de sucata NCM 4707 com CFOP 5102, diferimento total). Não entram nas inconsistências nem no CSV.
+        cst051Aceitos,
+        // Fora do total e do CSV de inconsistências: CST 90 de entrada com base 0 sem crédito informado no C110/0450.
+        // O operador confere no XML se o fornecedor do Simples tem direito a crédito.
+        conferirXml: {
+          aviso: AVISO_CONFERIR_XML,
+          totalItens: itensConferirXml,
+          totalNotas: fornecedoresConferir.reduce((s, f) => s + f.qtdNotas, 0),
+          fornecedores: fornecedoresConferir
+        },
         // Informativo, fora do total: itens de CST 90 de entrada com base 0 aceitos por terem o crédito de ICMS do
         // Simples Nacional informado no C110/0450. Não entram nas inconsistências nem no CSV.
         cst90CreditoSimples: creditoSimples,
@@ -241,6 +290,8 @@
         infoItem.set(item, { ncm, descricao: f[R0200.DESCR_ITEM] || '' });
         const motivo = conferirNcm(f[R0200.COD_NCM], cfg.FORMATO_NCM);
         if (motivo) add(linha, '0200', 'COD_NCM', f[R0200.COD_NCM] || '', motivo, item);
+      } else if (reg === '0150') {
+        participantes.set((f[R0150.COD_PART] || '').trim(), { nome: (f[R0150.NOME] || '').trim(), cnpj: (f[R0150.CNPJ] || '').trim(), cpf: (f[R0150.CPF] || '').trim() });
       } else if (reg === '0450') {
         textos0450.set((f[R0450.COD_INF] || '').trim(), f[R0450.TXT] || '');
       } else if (reg === 'C110') {
@@ -252,7 +303,7 @@
         contagem.c100++;
         notaC110 = { tem: false, textos: [] };
         nota = {
-          linha,
+          linha, codPart: (f[C100.COD_PART] || '').trim(),
           nf: (f[C100.NUM_DOC] || '').trim(), serie: (f[C100.SER] || '').trim(), data: (f[C100.DT_DOC] || '').trim(),
           operacao: (f[C100.IND_OPER] || '').trim(), chave: (f[C100.CHV_NFE] || '').trim()
         };
@@ -317,16 +368,22 @@
                 // Entrada: fornecedor do Simples Nacional informa o crédito no texto complementar, não no C170.
                 if (notaC110.textos.some(t => cfg.PADRAO_CREDITO_ICMS_SIMPLES.test(normalizarTexto(t)))) {
                   creditoSimples++;
-                } else if (notaC110.tem) {
-                  add(linha, 'C170', imp.base, bruto || '0', 'CST ' + cst + ' com CFOP ' + cfopLabel + ', base 0 e sem informação de crédito de ICMS no C110/0450 (fornecedor do Simples Nacional?)', item, cstLinha, TIPO_90_SEM_CREDITO_C110, nota, imp.nome);
                 } else {
-                  add(linha, 'C170', imp.base, bruto || '0', 'CST ' + cst + ' com CFOP ' + cfopLabel + ', base 0 e sem C110 (sem informação de crédito)', item, cstLinha, TIPO_90_SEM_C110, nota, imp.nome);
+                  registrarConferirXml(notaC110.tem ? MOTIVO_C110_SEM_CREDITO : MOTIVO_SEM_C110);
                 }
               } else {
                 add(linha, 'C170', imp.base, bruto || '0', 'CST ' + cst + ' com CFOP ' + cfopLabel + ' deveria ser tributado, mas a base é 0', item, cstLinha, TIPO_90_TRIBUTADO, nota, imp.nome);
               }
             }
           } else if (esperado === 'exige_base_analise' && !(base > 0)) {
+            // Validado pela fiscal Daniela (14/10/2026): base 0 é correta na entrada de produtor rural (0150 com CPF no
+            // lugar do CNPJ, que não tributa) e na saída de sucata (NCM 4707) com CFOP 5102 (diferimento total).
+            if (cst.slice(-2) === '51' && nota) {
+              const p = nota.operacao === '0' ? participantes.get(nota.codPart) : null;
+              const ncm = infoItem.has(item) ? infoItem.get(item).ncm : '';
+              if ((p && p.cpf !== '' && p.cnpj === '') ||
+                  (nota.operacao === '1' && cfopC170 === cfg.SUCATA_CFOP_SAIDA && ncm.startsWith(cfg.SUCATA_NCM_PREFIXO))) { cst051Aceitos++; return; }
+            }
             add(linha, 'C170', imp.base, bruto || '0',
               'CST ' + cst + ' deve ter base maior que 0, mas a base é 0: analisar caso a caso (pode ser operação sem base)', item, cstLinha, TIPO_ANALISE, nota, imp.nome);
           } else if (esperado === 'sem_base_operacao' && base > 0) {
@@ -477,9 +534,24 @@
 
   function gerarCsvNcms(ncms) { return gerarCsvNcmsPartes(ncms).join(''); }
 
+  // Quarto CSV, uma linha por fornecedor a conferir no XML (resumo.conferirXml.fornecedores, já por qtd_itens desc).
+  const CABECALHO_CSV_CONFERIR_XML = 'fornecedor;cnpj;cpf;qtd_notas;qtd_itens;cfops;motivo;notas';
+
+  function linhaCsvConferirXml(f) {
+    return campoCsv(f.fornecedor) + ';' + campoCsv(f.cnpj) + ';' + campoCsv(f.cpf) + ';' + f.qtdNotas + ';' + f.qtdItens + ';' +
+      campoCsv(f.cfops) + ';' + campoCsv(f.motivo) + ';' + campoCsv(f.notas);
+  }
+
+  function gerarCsvConferirXmlPartes(fornecedores, linhasPorParte) {
+    return csvPartes(CABECALHO_CSV_CONFERIR_XML, fornecedores, linhaCsvConferirXml, linhasPorParte);
+  }
+
+  function gerarCsvConferirXml(fornecedores) { return gerarCsvConferirXmlPartes(fornecedores).join(''); }
+
   const api = {
     createChecker, checkText, parseValor, conferirNcm, conferirCstFormato,
-    gerarCsvPartes, gerarCsv, gerarCsvNotasPartes, gerarCsvNotas, gerarCsvNcmsPartes, gerarCsvNcms
+    gerarCsvPartes, gerarCsv, gerarCsvNotasPartes, gerarCsvNotas, gerarCsvNcmsPartes, gerarCsvNcms,
+    gerarCsvConferirXmlPartes, gerarCsvConferirXml
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

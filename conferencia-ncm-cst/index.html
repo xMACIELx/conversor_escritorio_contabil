@@ -46,6 +46,7 @@
         <button id="csv" class="btn" type="button">Baixar CSV completo</button>
         <button id="csv-notas" class="btn" type="button">Baixar CSV por nota</button>
         <button id="csv-ncms" class="btn" type="button" aria-describedby="csv-ncms-help">Baixar NCMs do arquivo (CSV)</button>
+        <button id="csv-xml" class="btn" type="button" hidden>Baixar CSV a conferir no XML (por fornecedor)</button>
         <span id="csv-note" class="note" role="status" aria-live="polite"></span>
       </div>
       <p id="csv-ncms-help" class="note">O CSV de NCMs lista cada NCM do arquivo uma só vez, com os CSTs de ICMS usados, para você conferir os NCMs em lote, por exemplo na IOB.</p>
@@ -69,6 +70,27 @@
             </table>
           </div>
         </div>
+      </div>
+
+      <div id="resumo-xml" class="resumo" hidden>
+        <h3>A conferir no XML (STR)</h3>
+        <p id="xml-total" class="resumo-total"></p>
+        <p id="xml-aviso" class="note"></p>
+        <div class="table-wrap">
+          <table class="incons resumo-tab" id="xml-tab">
+            <caption class="sr-only">Fornecedores a conferir no XML</caption>
+            <thead>
+              <tr>
+                <th scope="col">Fornecedor</th>
+                <th scope="col">CNPJ</th>
+                <th scope="col" class="num">Notas</th>
+                <th scope="col" class="num">Itens</th>
+              </tr>
+            </thead>
+            <tbody id="xml-body"></tbody>
+          </table>
+        </div>
+        <p id="xml-truncated" class="note" hidden></p>
       </div>
 
       <div id="resumo-ncms" class="resumo" hidden>

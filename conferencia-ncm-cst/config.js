@@ -37,6 +37,13 @@
   // desses textos, sem acento e em maiúsculas, casa com o padrão abaixo (aceita "DO" ou "DE" antes de ICMS).
   const PADRAO_CREDITO_ICMS_SIMPLES = /APROVEITAMENTO\s+DO\s+CREDITO\s+D[OE]\s+ICMS/;
 
+  // ICMS CST x51 com base 0, validado pela fiscal Daniela (14/10/2026), é aceito (fora do total) em dois casos:
+  //   entrada de participante com CPF no lugar do CNPJ no 0150 (produtor rural não tributa);
+  //   saída de sucata (NCM começando com 4707) com CFOP 5102 (diferimento total).
+  // Qualquer outro CST x51 com base 0 segue em "analisar caso a caso".
+  const SUCATA_NCM_PREFIXO = '4707';
+  const SUCATA_CFOP_SAIDA = '5102';
+
   // PIS/COFINS, validado pela fiscal da MAC: CSTs que NÃO devem ter base (base zero), conforme a operação
   // (IND_OPER do C100: 0 = entrada, 1 = saída). Vale para CST_PIS (VL_BC_PIS) e CST_COFINS (VL_BC_COFINS).
   // Validados: 04, 05, 06 (saída) e 73, 75 (entrada). Os demais CSTs continuam sem conferência.
@@ -62,7 +69,7 @@
   const FORMATO_CST_PIS_COFINS = /^(0[1-9]|[1-9]\d)$/;
 
   const api = {
-    REGRA_BASE_VALIDADA, BASE_POR_CST_ICMS, CFOPS_ICMS_90_SEM_BASE, CFOPS_ICMS_SEM_BASE, CFOPS_DEVOLUCAO_COM_BASE, PADRAO_CREDITO_ICMS_SIMPLES, BASE_POR_CST_PIS_COFINS, PIS_COFINS_EXIGE_BASE,
+    REGRA_BASE_VALIDADA, BASE_POR_CST_ICMS, CFOPS_ICMS_90_SEM_BASE, CFOPS_ICMS_SEM_BASE, CFOPS_DEVOLUCAO_COM_BASE, PADRAO_CREDITO_ICMS_SIMPLES, SUCATA_NCM_PREFIXO, SUCATA_CFOP_SAIDA, BASE_POR_CST_PIS_COFINS, PIS_COFINS_EXIGE_BASE,
     FORMATO_NCM, FORMATO_CST_ICMS, FORMATO_CST_PIS_COFINS
   };
 
