@@ -19,10 +19,14 @@
     '10': 'sem_base', '30': 'sem_base', '40': 'sem_base', '41': 'sem_base',
     '50': 'sem_base', '60': 'sem_base', '70': 'sem_base'
   };
-  // PIS/COFINS, CSTs que "não devem ter base" (chave = CST de 2 dígitos, valor 'sem_base').
-  // PENDENTE: a fiscal da MAC ainda não confirmou se os demais CSTs devem ter base zero; tabela vazia de
-  // propósito, e nenhum CST fora de PIS_COFINS_EXIGE_BASE é apontado. Não preencher sem a confirmação dela.
-  const BASE_POR_CST_PIS_COFINS = {};
+  // PIS/COFINS, validado pela fiscal da MAC: CSTs que NÃO devem ter base (base zero), conforme a operação
+  // (IND_OPER do C100: 0 = entrada, 1 = saída). Vale para CST_PIS (VL_BC_PIS) e CST_COFINS (VL_BC_COFINS).
+  // Validados: 04, 05, 06 (saída) e 73, 75 (entrada). Os demais CSTs continuam sem conferência.
+  // Sem C100 (operação desconhecida), a regra não é aplicada.
+  const BASE_POR_CST_PIS_COFINS = {
+    entrada: ['73', '75'],
+    saida: ['04', '05', '06']
+  };
 
   // PIS/COFINS, validado pela fiscal da MAC: CSTs que DEVEM ter base maior que 0, conforme a operação
   // (IND_OPER do C100: 0 = entrada, 1 = saída). Vale para CST_PIS (VL_BC_PIS) e CST_COFINS (VL_BC_COFINS).

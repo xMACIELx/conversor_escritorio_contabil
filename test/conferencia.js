@@ -65,22 +65,24 @@ module.exports = function (check) {
   const config = {
     REGRA_BASE_VALIDADA: true,
     BASE_POR_CST_ICMS: { '40': 'sem_base', '00': 'exige_base' },
-    BASE_POR_CST_PIS_COFINS: { '04': 'sem_base', '01': 'exige_base' }
+    BASE_POR_CST_PIS_COFINS: { entrada: [], saida: ['04'] },
+    PIS_COFINS_EXIGE_BASE: { entrada: [], saida: ['01'] }
   };
   const t2 = [
+    '|C100|1|0|P|55|00|1|1|',
     r0200('B1', '12345678'),
-    r170('B1', { icms: '040', bcIcms: '10,00', pis: '04', bcPis: '0,00', cofins: '04', bcCofins: '5,00' }), // 2
-    r170('B1', { icms: '000', bcIcms: '0,00', pis: '01', bcPis: '10,00', cofins: '01', bcCofins: '' }),   // 3
-    r170('B1', { icms: '000', bcIcms: 'abc', pis: '01', bcPis: '1,00', cofins: '01', bcCofins: '1,00' }),  // 4
-    r170('B1', { icms: '090', bcIcms: '99,00', pis: '99', bcPis: '9,00', cofins: '99', bcCofins: '9,00' })  // 5: CST fora da tabela
+    r170('B1', { icms: '040', bcIcms: '10,00', pis: '04', bcPis: '0,00', cofins: '04', bcCofins: '5,00' }), // 3
+    r170('B1', { icms: '000', bcIcms: '0,00', pis: '01', bcPis: '10,00', cofins: '01', bcCofins: '' }),   // 4
+    r170('B1', { icms: '000', bcIcms: 'abc', pis: '01', bcPis: '1,00', cofins: '01', bcCofins: '1,00' }),  // 5
+    r170('B1', { icms: '090', bcIcms: '99,00', pis: '99', bcPis: '9,00', cofins: '99', bcCofins: '9,00' })  // 6: CST fora da tabela
   ].join('\n');
   const r2 = K.checkText(t2, { config });
   const motivos = r2.inconsistencias.map(i => i.linha + ':' + i.campo);
-  check('CST sem base com base > 0 é apontado', motivos.includes('2:VL_BC_ICMS') && motivos.includes('2:VL_BC_COFINS'), motivos.join(','));
-  check('CST sem base com base 0 não é apontado', !motivos.includes('2:VL_BC_PIS'));
-  check('CST tributado com base vazia é apontado', motivos.includes('3:VL_BC_COFINS') && !motivos.includes('3:VL_BC_PIS'));
-  check('base não numérica é apontada', motivos.includes('4:VL_BC_ICMS'));
-  check('CST fora da tabela não é conferido', !motivos.some(m => m.startsWith('5:')));
+  check('CST sem base com base > 0 é apontado', motivos.includes('3:VL_BC_ICMS') && motivos.includes('3:VL_BC_COFINS'), motivos.join(','));
+  check('CST sem base com base 0 não é apontado', !motivos.includes('3:VL_BC_PIS'));
+  check('CST tributado com base vazia é apontado', motivos.includes('4:VL_BC_COFINS') && !motivos.includes('4:VL_BC_PIS'));
+  check('base não numérica é apontada', motivos.includes('5:VL_BC_ICMS'));
+  check('CST fora da tabela não é conferido', !motivos.some(m => m.startsWith('6:')));
   check('regraBasePendente = false com tabela validada', r2.regraBasePendente === false);
 
   // Tabela real validada pela fiscal da MAC (config.js), com origem 0 e 2
@@ -104,7 +106,7 @@ module.exports = function (check) {
   });
   check('CST 000 com base 0 mantém o motivo comum (sem análise caso a caso)', !/caso a caso/.test(unica('000', '0,00')[0].motivo));
   check('CST fora da tabela (02, 80) não é conferido', unica('002', '0,00').length === 0 && unica('080', '5,00').length === 0);
-  check('PIS/COFINS não são conferidos quanto à base (decisão pendente)',
+  check('PIS/COFINS sem C100 (operação desconhecida) não são conferidos quanto à base',
     K.checkText(r0200('C1', '12345678') + '\n' + r170('C1', { icms: '000', bcIcms: '1,00', pis: '04', bcPis: '9,00', cofins: '01', bcCofins: '0' })).total === 0);
 
   // CST de 4 dígitos (possível CSOSN do Simples)
@@ -235,7 +237,7 @@ module.exports = function (check) {
   // A lista de saída não vale na entrada e vice-versa; CSTs fora das listas nunca são apontados
   check('CST de saída (01) em nota de entrada não é apontado', pc('0', '01', '0,00', 'pis').length === 0 && pc('0', '49', '0,00', 'cofins').length === 0);
   check('CST de entrada (51) em nota de saída não é apontado', pc('1', '51', '0,00', 'pis').length === 0 && pc('1', '98', '0,00', 'cofins').length === 0);
-  const fora = ['04', '05', '06', '07', '08', '09', '49', '50', '60', '66', '70', '73', '74', '75', '99'];
+  const fora = ['07', '08', '09', '49', '50', '60', '66', '70', '74', '99'];
   check('CST fora das listas (base 0 ou > 0) não é apontado, entrada e saída',
     ['0', '1'].every(oper => fora.every(cst => (LISTAS[oper].includes(cst)) ||
       ['pis', 'cofins'].every(q => pc(oper, cst, '0,00', q).length === 0 && pc(oper, cst, '9,00', q).length === 0))));
@@ -245,7 +247,48 @@ module.exports = function (check) {
     const m = K.checkText(t).inconsistencias;
     return m.length === 1 && m[0].campo === 'VL_BC_PIS' && m[0].cst === '51';
   })());
-  check('tabela "sem base" de PIS/COFINS continua vazia (pendente da fiscal)', Object.keys(require('../conferencia-ncm-cst/config.js').BASE_POR_CST_PIS_COFINS).length === 0);
+  const cfgReal = require('../conferencia-ncm-cst/config.js');
+  check('tabela "sem base" de PIS/COFINS validada: saída 04, 05, 06 e entrada 73, 75',
+    JSON.stringify(cfgReal.BASE_POR_CST_PIS_COFINS) === JSON.stringify({ entrada: ['73', '75'], saida: ['04', '05', '06'] }));
+  check('listas "com base" validadas continuam iguais',
+    JSON.stringify(cfgReal.PIS_COFINS_EXIGE_BASE) === JSON.stringify({ entrada: ['50', '51', '52', '53', '56', '98'], saida: ['01', '02', '03', '49'] }));
+
+  // Regra "sem base" (SYN-42): saída 04, 05, 06; entrada 73, 75
+  const SEM_BASE = { '1': ['04', '05', '06'], '0': ['73', '75'] };
+  Object.keys(SEM_BASE).forEach(oper => SEM_BASE[oper].forEach(cst => ['pis', 'cofins'].forEach(qual => {
+    const nome = qual.toUpperCase(), op = oper === '0' ? 'entrada' : 'saída', tag = nome + ' ' + cst + ' de ' + op;
+    ['0,00', '0', ''].forEach(bc => check('CST ' + tag + ' sem base com base ' + (bc || 'vazia') + ' não é apontado', pc(oper, cst, bc, qual).length === 0));
+    const m = pc(oper, cst, '150,00', qual);
+    check('CST ' + tag + ' com base 150,00 é apontado com motivo claro',
+      m.length === 1 && m[0].motivo === 'CST ' + nome + ' ' + cst + ' de ' + op + ' não deve ter base, mas a base é 150,00' &&
+      m[0].imposto === nome && m[0].cst === cst && m[0].valor === '150,00' && m[0].operacao === oper, JSON.stringify(m));
+    check('CST ' + tag + ' com base não numérica: aponta "não é número"', (x => x.length === 1 && x[0].motivo === 'Base de cálculo não é número')(pc(oper, cst, 'abc', qual)));
+  })));
+  check('motivo de exemplo: CST PIS 06 de saída não deve ter base, mas a base é 150,00',
+    pc('1', '06', '150,00', 'pis')[0].motivo === 'CST PIS 06 de saída não deve ter base, mas a base é 150,00');
+  check('lista de saída (04) em nota de entrada e lista de entrada (73) em nota de saída não são apontadas',
+    pc('0', '04', '9,00', 'pis').length === 0 && pc('0', '06', '9,00', 'cofins').length === 0 &&
+    pc('1', '73', '9,00', 'pis').length === 0 && pc('1', '75', '9,00', 'cofins').length === 0);
+  check('sem base: PIS e COFINS conferidos separadamente', (() => {
+    const t = [r0200('P1', '12345678'), r100('1', '1', '1', '01012026', CH1),
+      r170('P1', { icms: '000', bcIcms: '1,00', pis: '04', bcPis: '0,00', cofins: '05', bcCofins: '8,00' })].join('\n');
+    const m = K.checkText(t).inconsistencias;
+    return m.length === 1 && m[0].campo === 'VL_BC_COFINS' && m[0].cst === '05' && m[0].imposto === 'COFINS';
+  })());
+  check('sem base: PIS e COFINS ambos com base > 0 geram duas inconsistências', (() => {
+    const t = [r0200('P1', '12345678'), r100('0', '1', '1', '01012026', CH1),
+      r170('P1', { icms: '000', bcIcms: '1,00', pis: '73', bcPis: '3,00', cofins: '75', bcCofins: '8,00' })].join('\n');
+    return K.checkText(t).inconsistencias.map(i => i.imposto + ':' + i.cst).sort().join() === 'COFINS:75,PIS:73';
+  })());
+  check('sem base: sem C100 a regra não é aplicada', K.checkText([r0200('P1', '12345678'),
+    r170('P1', { icms: '000', bcIcms: '1,00', pis: '06', bcPis: '5,00', cofins: '73', bcCofins: '5,00' })].join('\n')).total === 0);
+  check('sem base: o resumo agrupa o motivo sem o valor da base', (() => {
+    const t = [r0200('P1', '12345678'), r100('1', '1', '1', '01012026', CH1),
+      r170('P1', { icms: '000', bcIcms: '1,00', pis: '06', bcPis: '5,00', cofins: '99' }),
+      r170('P1', { icms: '000', bcIcms: '1,00', pis: '06', bcPis: '7,50', cofins: '99' })].join('\n');
+    const mo = K.checkText(t).resumo.porMotivo;
+    return mo.length === 1 && mo[0].total === 2 && mo[0].motivo === 'CST PIS de saída não deve ter base, mas a base é maior que 0';
+  })());
   const semC100 = K.checkText([r0200('P1', '12345678'), r170('P1', { icms: '000', bcIcms: '1,00', pis: '51', bcPis: '0', cofins: '01', bcCofins: '0' })].join('\n'));
   check('sem C100 (operação desconhecida): regra de PIS/COFINS não é aplicada e fica registrado',
     semC100.total === 0 && semC100.c170PisCofinsSemOperacao === 1, JSON.stringify([semC100.total, semC100.c170PisCofinsSemOperacao]));
@@ -380,4 +423,48 @@ module.exports = function (check) {
   check('CSV por nota: data convertida, inválida preservada, vazia vazia',
     csvNi[1] === '"1";"1";"15/03/2026";"1";"";2;"a ""b"""' && csvNi[2].split(';')[2] === '"31022026"' && csvNi[3].split(';')[2] === '""', csvNi.join('|'));
   check('CSV por nota: data DD/MM/AAAA vinda do arquivo', K.gerarCsvNotas(pn).includes('"10/01/2026"') && !K.gerarCsvNotas(pn).includes('10012026'));
+
+  // ---- CSV de NCMs distintos (SYN-42) ----
+  const r0200d = (cod, desc, ncm) => { const f = new Array(10).fill(''); f[1] = '0200'; f[2] = cod; f[3] = desc; f[8] = ncm; return f.join('|') + '|'; };
+  const c170de = (item, cst) => r170(item, { icms: cst, bcIcms: '1,00', pis: '99', cofins: '99' });
+  const tnc = [
+    r0200d('A', 'ARROZ "TIPO 1"; 5KG', '10063021'),
+    r0200d('B', 'ARROZ INTEGRAL', '10063021'),
+    r0200d('C', 'FEIJAO', '07133319'),
+    r0200d('D', 'SEM NCM', ''),
+    r0200d('E', 'NCM CURTA', '1234'),
+    r0200d('F', 'NUNCA VENDIDO', '99999999'),
+    c170de('A', '000'), c170de('A', '000'), c170de('B', '051'), c170de('A', '000'), c170de('B', '000'),
+    c170de('C', '040'), c170de('C', '040'), c170de('C', '040'), c170de('C', '040'), c170de('C', '040'), c170de('C', '040'),
+    c170de('D', ''), c170de('E', '090'),
+    c170de('ZZ', '000')   // item sem 0200: não entra em nenhum NCM
+  ].join('\n');
+  const rnc = K.checkText(tnc);
+  const nc = rnc.ncms;
+  check('NCMs: um por NCM distinto, incluindo vazio e inválido', nc.length === 5 && nc.map(n => n.ncm).sort().join() === ',07133319,10063021,1234,99999999', JSON.stringify(nc));
+  check('NCMs: ordenados por linhas_c170 decrescente (empate por NCM)', nc.map(n => n.ncm + '=' + n.linhasC170).join() === '07133319=6,10063021=5,=1,1234=1,99999999=0', nc.map(n => n.ncm + '=' + n.linhasC170).join());
+  const arroz = nc.find(n => n.ncm === '10063021');
+  check('NCMs: itens_no_0200, linhas_c170 e descrição de exemplo (primeira do 0200)',
+    arroz.itens0200 === 2 && arroz.linhasC170 === 5 && arroz.descricao === 'ARROZ "TIPO 1"; 5KG', JSON.stringify(arroz));
+  check('NCMs: CSTs de ICMS agregados, mais usado primeiro', JSON.stringify(arroz.cstIcms) === JSON.stringify([{ cst: '000', total: 4 }, { cst: '051', total: 1 }]), JSON.stringify(arroz.cstIcms));
+  check('NCMs: item sem 0200 não conta; NCM sem C170 fica com 0 e CSTs vazios',
+    nc.reduce((s, n) => s + n.linhasC170, 0) === 13 && nc.find(n => n.ncm === '99999999').linhasC170 === 0 && nc.find(n => n.ncm === '99999999').cstIcms.length === 0);
+  const csvNc = K.gerarCsvNcms(nc);
+  const lnc = csvNc.split('\r\n');
+  check('CSV NCMs: BOM, cabeçalho e ordem das colunas', csvNc.charCodeAt(0) === 0xFEFF && lnc[0] === '﻿ncm;descricao_exemplo;itens_no_0200;linhas_c170;cst_icms_usados', lnc[0]);
+  check('CSV NCMs: CRLF, sem LF solto, uma linha por NCM', lnc.length === 5 + 2 && lnc[6] === '' && !/[^\r]\n/.test(csvNc));
+  check('CSV NCMs: linha com contagens e CSTs no formato "CST:qtd | CST:qtd"',
+    lnc[2] === '"10063021";"ARROZ ""TIPO 1""; 5KG";2;5;"000:4 | 051:1"', lnc[2]);
+  check('CSV NCMs: primeira linha é a de mais C170', lnc[1] === '"07133319";"FEIJAO";1;6;"040:6"', lnc[1]);
+  check('CSV NCMs: NCM vazio e inválido entram como estão (CST vazio vira "(vazio)")',
+    lnc.includes('"";"SEM NCM";1;1;"(vazio):1"') && lnc.includes('"1234";"NCM CURTA";1;1;"090:1"') && lnc[5] === '"99999999";"NUNCA VENDIDO";1;0;""', lnc.join('|'));
+  check('CSV NCMs vazio: só BOM e cabeçalho', K.gerarCsvNcms([]) === '﻿ncm;descricao_exemplo;itens_no_0200;linhas_c170;cst_icms_usados\r\n');
+  const pc3 = K.gerarCsvNcmsPartes(Array.from({ length: 2500 }, (_, k) => ({ ncm: String(k), descricao: 'x', itens0200: 1, linhasC170: 1, cstIcms: [{ cst: '000', total: 1 }] })), 1000);
+  check('CSV NCMs em partes: BOM só na primeira e mesmo conteúdo', pc3.length === 3 && pc3.slice(1).every(p => p.charCodeAt(0) !== 0xFEFF) && pc3.join('').split('\r\n').length === 2502);
+  check('NCMs igual lendo em blocos', (() => {
+    const c5 = K.createChecker();
+    for (let i = 0; i < tnc.length; i += 9) c5.feedChunk(tnc.slice(i, i + 9));
+    return JSON.stringify(c5.finish().ncms) === JSON.stringify(nc);
+  })());
+  check('NCMs: arquivo sem 0200 gera lista vazia', K.checkText('|0000|x|').ncms.length === 0);
 };
