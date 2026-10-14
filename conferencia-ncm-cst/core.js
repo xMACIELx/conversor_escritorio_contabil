@@ -72,6 +72,8 @@
   const TIPO_ANALISE = 'CST deve ter base maior que 0, mas a base é 0: analisar caso a caso';
 
   const SEP_CHAVE = '\u0000';
+  const SEP_MOTIVOS = ' | ';
+  const NCMS_NO_RANKING = 30;
 
   function ordenar(lista) {
     return lista.sort((a, b) => b.total - a.total || (a.cst || '').localeCompare(b.cst || '') ||
@@ -86,12 +88,15 @@
   // vazio quando a inconsistência não tem CST (NCM do 0200 e item sem cadastro no 0200).
   // nf, serie, data, operacao (IND_OPER: 0 entrada, 1 saída) e chave vêm do C100 corrente; vazios sem C100
   // (e sempre vazios nas do 0200).
+  // ncm (COD_NCM) e descricao (DESCR_ITEM) vêm do 0200 do COD_ITEM, só nas inconsistências do C170; vazios
+  // quando o item não tem 0200 e nas inconsistências do próprio 0200.
   function createChecker(options) {
     const cfg = Object.assign({}, Config, (options && options.config) || {});
     const lista = impostos(cfg);
     const itens = new Set();
-    const ncmDoItem = new Map(); // COD_ITEM -> chave do mapa por NCM
+    const infoItem = new Map();  // COD_ITEM -> { ncm (chave do mapa por NCM), descricao } do último 0200 do item
     const porNcm = new Map();    // NCM como está no 0200 -> { descricao, itens, c170, csts: Map }
+    const incPorNcm = new Map(); // NCM -> { total, quebra: Map(imposto + CST -> total) }; só inconsistências de C170 com item no 0200
     const inconsistencias = [];
     const porCst = new Map();
     const porMotivo = new Map();
@@ -109,10 +114,18 @@
       imposto = imposto || '';
       tipo = tipo || motivo;
       const ctx = daNota || CAMPOS_NOTA_VAZIOS;
+      const produto = registro === 'C170' ? infoItem.get(item) : undefined;
       inconsistencias.push({
         linha, registro, campo, valor: valor === undefined ? '' : valor, motivo, item, imposto, cst,
-        nf: ctx.nf, serie: ctx.serie, data: ctx.data, operacao: ctx.operacao, chave: ctx.chave
+        nf: ctx.nf, serie: ctx.serie, data: ctx.data, operacao: ctx.operacao, chave: ctx.chave,
+        ncm: produto ? produto.ncm : '', descricao: produto ? produto.descricao : ''
       });
+      if (produto) {
+        let e = incPorNcm.get(produto.ncm);
+        if (!e) { e = { total: 0, quebra: new Map() }; incPorNcm.set(produto.ncm, e); }
+        e.total++;
+        soma(e.quebra, imposto + SEP_CHAVE + cst);
+      }
       if (daNota) {
         let n = porNota.get(daNota.linha);
         if (!n) {
@@ -127,10 +140,29 @@
       soma(porCstMotivo, imposto + SEP_CHAVE + cst + SEP_CHAVE + tipo);
     }
 
+    // Os NCMs com mais inconsistências (todas contam), mais inconsistências primeiro, empate pelo NCM.
+    // quebra: "ICMS 051:12 | ICMS 000:3" (CST vazio aparece como "(vazio)").
+    function rankingNcms() {
+      return Array.from(incPorNcm, ([ncm, e]) => ({ ncm, e })).sort((a, b) => b.e.total - a.e.total || a.ncm.localeCompare(b.ncm))
+        .slice(0, NCMS_NO_RANKING).map(({ ncm, e }) => {
+          const quebraLista = ordenar(Array.from(e.quebra, ([k, total]) => {
+            const p = k.split(SEP_CHAVE);
+            return { imposto: p[0], cst: p[1], total };
+          }));
+          return {
+            ncm, descricao: porNcm.get(ncm).descricao, total: e.total, quebraLista,
+            quebra: quebraLista.map(q => q.imposto + ' ' + (q.cst === '' ? '(vazio)' : q.cst) + ':' + q.total).join(SEP_MOTIVOS)
+          };
+        });
+    }
+
     function resumo() {
       const lista = mapa => Array.from(mapa, ([k, total]) => ({ k, total }));
       return {
         total: inconsistencias.length,
+        // NCMs com mais inconsistências (até 30) e o total de NCMs distintos com inconsistência.
+        ncmsTop: rankingNcms(),
+        totalNcmsComInconsistencia: incPorNcm.size,
         // Agrupado por imposto + CST: o mesmo número pode existir em impostos diferentes (ICMS 051, PIS 51).
         porCst: ordenar(lista(porCst).map(e => {
           const p = e.k.split(SEP_CHAVE);
@@ -162,7 +194,7 @@
         let e = porNcm.get(ncm);
         if (!e) { e = { descricao: f[R0200.DESCR_ITEM] || '', itens: 0, c170: 0, csts: new Map() }; porNcm.set(ncm, e); }
         e.itens++;
-        ncmDoItem.set(item, ncm);
+        infoItem.set(item, { ncm, descricao: f[R0200.DESCR_ITEM] || '' });
         const motivo = conferirNcm(f[R0200.COD_NCM], cfg.FORMATO_NCM);
         if (motivo) add(linha, '0200', 'COD_NCM', f[R0200.COD_NCM] || '', motivo, item);
       } else if (reg === 'C100') {
@@ -179,7 +211,7 @@
         if (!nota) contagem.c170SemC100++;
         const item = f[C170.COD_ITEM] || '';
         const cstIcms = (f[C170.CST_ICMS] || '').trim();
-        const eNcm = ncmDoItem.has(item) ? porNcm.get(ncmDoItem.get(item)) : null;
+        const eNcm = infoItem.has(item) ? porNcm.get(infoItem.get(item).ncm) : null;
         if (eNcm) { eNcm.c170++; soma(eNcm.csts, cstIcms); }
         const nomeOperacao = nota ? OPERACAO[nota.operacao] : undefined;
         let semOperacao = false;
@@ -246,6 +278,7 @@
     function listaNcms() {
       return Array.from(porNcm, ([ncm, e]) => ({
         ncm, descricao: e.descricao, itens0200: e.itens, linhasC170: e.c170,
+        inconsistencias: incPorNcm.has(ncm) ? incPorNcm.get(ncm).total : 0,
         cstIcms: Array.from(e.csts, ([cst, total]) => ({ cst, total })).sort((a, b) => b.total - a.total || a.cst.localeCompare(b.cst))
       })).sort((a, b) => b.linhasC170 - a.linhasC170 || a.ncm.localeCompare(b.ncm));
     }
@@ -279,9 +312,8 @@
     return c.finish();
   }
 
-  const CABECALHO_CSV = 'linha;registro;campo;valor;motivo;item;imposto;CST;NF;serie;data;operacao;chave';
+  const CABECALHO_CSV = 'linha;registro;campo;valor;motivo;item;imposto;CST;NF;serie;data;operacao;chave;ncm;descricao';
   const CABECALHO_CSV_NOTAS = 'NF;serie;data;operacao;chave;quantidade_inconsistencias;motivos';
-  const SEP_MOTIVOS = ' | ';
 
   // Campo de texto: sempre entre aspas duplas, aspas internas dobradas.
   function campoCsv(v) { return '"' + String(v === undefined || v === null ? '' : v).replace(/"/g, '""') + '"'; }
@@ -300,7 +332,7 @@
     return i.linha + ';' + campoCsv(i.registro) + ';' + campoCsv(i.campo) + ';' + campoCsv(i.valor) + ';' +
       campoCsv(i.motivo) + ';' + campoCsv(i.item) + ';' + campoCsv(i.imposto) + ';' + campoCsv(i.cst) + ';' +
       campoCsv(i.nf) + ';' + campoCsv(i.serie) + ';' + campoCsv(dataCsv(i.data)) + ';' + campoCsv(i.operacao) + ';' +
-      campoCsv(i.chave);
+      campoCsv(i.chave) + ';' + campoCsv(i.ncm) + ';' + campoCsv(i.descricao);
   }
 
   function linhaCsvNota(n) {
@@ -339,13 +371,14 @@
   function gerarCsvNotas(notas) { return gerarCsvNotasPartes(notas).join(''); }
 
   // Terceiro CSV, uma linha por NCM distinto (resultado.ncms), para a fiscal consultar em lote na IOB:
-  // ncm, descricao_exemplo, itens_no_0200, linhas_c170, cst_icms_usados ("CST:qtd" separados por " | ").
+  // ncm, descricao_exemplo, itens_no_0200, linhas_c170, cst_icms_usados ("CST:qtd" separados por " | "),
+  // inconsistencias (total de inconsistências de C170 dos itens do NCM).
   // CST de ICMS vazio aparece como "(vazio)".
-  const CABECALHO_CSV_NCMS = 'ncm;descricao_exemplo;itens_no_0200;linhas_c170;cst_icms_usados';
+  const CABECALHO_CSV_NCMS = 'ncm;descricao_exemplo;itens_no_0200;linhas_c170;cst_icms_usados;inconsistencias';
 
   function linhaCsvNcm(n) {
     return campoCsv(n.ncm) + ';' + campoCsv(n.descricao) + ';' + n.itens0200 + ';' + n.linhasC170 + ';' +
-      campoCsv((n.cstIcms || []).map(c => (c.cst === '' ? '(vazio)' : c.cst) + ':' + c.total).join(SEP_MOTIVOS));
+      campoCsv((n.cstIcms || []).map(c => (c.cst === '' ? '(vazio)' : c.cst) + ':' + c.total).join(SEP_MOTIVOS)) + ';' + (n.inconsistencias || 0);
   }
 
   function gerarCsvNcmsPartes(ncms, linhasPorParte) {
