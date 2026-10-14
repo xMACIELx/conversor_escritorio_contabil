@@ -13,12 +13,17 @@
   //   'sem_base'           : base deve ser 0
   //   'exige_base'         : base deve ser maior que 0
   //   'exige_base_analise' : como 'exige_base', mas base 0 pode ser legítima; vai para análise caso a caso
+  //   'por_cfop_90'        : depende do CFOP do C170 (ver CFOPS_ICMS_90_SEM_BASE)
   // CST fora da tabela não é conferido.
   const BASE_POR_CST_ICMS = {
-    '00': 'exige_base', '20': 'exige_base', '51': 'exige_base_analise', '90': 'exige_base_analise',
+    '00': 'exige_base', '20': 'exige_base', '51': 'exige_base_analise', '90': 'por_cfop_90',
     '10': 'sem_base', '30': 'sem_base', '40': 'sem_base', '41': 'sem_base',
     '50': 'sem_base', '60': 'sem_base', '70': 'sem_base'
   };
+  // ICMS CST x90, validado pela fiscal da MAC: CFOPs de uso/consumo/ativo NÃO podem ter base de ICMS;
+  // qualquer outro CFOP deve ter base maior que 0.
+  const CFOPS_ICMS_90_SEM_BASE = ['1556', '2556', '1407', '2407', '1551', '2551', '1406', '2406'];
+
   // PIS/COFINS, validado pela fiscal da MAC: CSTs que NÃO devem ter base (base zero), conforme a operação
   // (IND_OPER do C100: 0 = entrada, 1 = saída). Vale para CST_PIS (VL_BC_PIS) e CST_COFINS (VL_BC_COFINS).
   // Validados: 04, 05, 06 (saída) e 73, 75 (entrada). Os demais CSTs continuam sem conferência.
@@ -44,7 +49,7 @@
   const FORMATO_CST_PIS_COFINS = /^(0[1-9]|[1-9]\d)$/;
 
   const api = {
-    REGRA_BASE_VALIDADA, BASE_POR_CST_ICMS, BASE_POR_CST_PIS_COFINS, PIS_COFINS_EXIGE_BASE,
+    REGRA_BASE_VALIDADA, BASE_POR_CST_ICMS, CFOPS_ICMS_90_SEM_BASE, BASE_POR_CST_PIS_COFINS, PIS_COFINS_EXIGE_BASE,
     FORMATO_NCM, FORMATO_CST_ICMS, FORMATO_CST_PIS_COFINS
   };
 

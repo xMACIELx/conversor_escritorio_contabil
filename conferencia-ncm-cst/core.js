@@ -5,7 +5,7 @@
  * Registros lidos (campos separados por "|", índice 0 é vazio por causa do "|" inicial):
  *   0200 cadastro do item:  [2] COD_ITEM | [8] COD_NCM
  *   C100 nota (NF):         [2] IND_OPER (0 entrada, 1 saída) | [7] SER | [8] NUM_DOC | [9] CHV_NFE | [10] DT_DOC
- *   C170 item da nota:      [2] NUM_ITEM | [3] COD_ITEM | [10] CST_ICMS | [13] VL_BC_ICMS
+ *   C170 item da nota:      [2] NUM_ITEM | [3] COD_ITEM | [10] CST_ICMS | [11] CFOP | [13] VL_BC_ICMS
  *                           [25] CST_PIS | [26] VL_BC_PIS | [27] ALIQ_PIS | [30] VL_PIS
  *                           [31] CST_COFINS | [32] VL_BC_COFINS | [33] ALIQ_COFINS | [36] VL_COFINS
  *
@@ -23,7 +23,7 @@
   const R0200 = { COD_ITEM: 2, DESCR_ITEM: 3, COD_NCM: 8 };
   const C100 = { IND_OPER: 2, SER: 7, NUM_DOC: 8, CHV_NFE: 9, DT_DOC: 10 };
   const C170 = {
-    COD_ITEM: 3, CST_ICMS: 10, VL_BC_ICMS: 13,
+    COD_ITEM: 3, CST_ICMS: 10, CFOP: 11, VL_BC_ICMS: 13,
     CST_PIS: 25, VL_BC_PIS: 26, ALIQ_PIS: 27, VL_PIS: 30,
     CST_COFINS: 31, VL_BC_COFINS: 32, ALIQ_COFINS: 33, VL_COFINS: 36
   };
@@ -73,6 +73,10 @@
   const TIPO_TRIBUTADO = 'CST tributado, mas a base é 0';
   const TIPO_ANALISE = 'CST deve ter base maior que 0, mas a base é 0: analisar caso a caso';
 
+  // ICMS com CST final 90: a regra depende do CFOP do C170.
+  const TIPO_90_SEM_BASE = 'CST 90 com CFOP de uso/consumo/ativo não deveria ter base, mas a base é maior que 0';
+  const TIPO_90_TRIBUTADO = 'CST 90 deveria ser tributado pelo CFOP, mas a base é 0';
+
   // CST de alíquota zero de PIS/COFINS: a mensagem do motivo mostra a alíquota e o valor do imposto preenchidos.
   const CST_ALIQUOTA_ZERO = '06';
 
@@ -95,6 +99,7 @@
   // (e sempre vazios nas do 0200).
   // aliquota e valor_imposto (ALIQ_ e VL_ do PIS ou COFINS, como estão no C170): só nas inconsistências de base de
   // CST 06 (alíquota zero); vazios nas demais.
+  // cfop (CFOP do C170, como está no arquivo): em toda inconsistência de C170; vazio nas do 0200.
   // ncm (COD_NCM) e descricao (DESCR_ITEM) vêm do 0200 do COD_ITEM, só nas inconsistências do C170; vazios
   // quando o item não tem 0200 e nas inconsistências do próprio 0200.
   function createChecker(options) {
@@ -112,6 +117,7 @@
     const contagem = { linhas: 0, r0200: 0, c170: 0, c100: 0, c170SemC100: 0, pisCofinsSemOperacao: 0 };
     let nota = null; // C100 corrente: { linha, nf, serie, data, operacao, chave }
     let resto = '';
+    let cfopC170 = ''; // CFOP do C170 em conferência, gravado em cada inconsistência dele
 
     function soma(mapa, chave) { mapa.set(chave, (mapa.get(chave) || 0) + 1); }
 
@@ -126,7 +132,7 @@
       const produto = registro === 'C170' ? infoItem.get(item) : undefined;
       inconsistencias.push({
         linha, registro, campo, valor: valor === undefined ? '' : valor, motivo, item, imposto, cst,
-        aliquota, valor_imposto: valorImposto,
+        aliquota, valor_imposto: valorImposto, cfop: registro === 'C170' ? cfopC170 : '',
         nf: ctx.nf, serie: ctx.serie, data: ctx.data, operacao: ctx.operacao, chave: ctx.chave,
         ncm: produto ? produto.ncm : '', descricao: produto ? produto.descricao : ''
       });
@@ -228,6 +234,7 @@
         if (!nota) contagem.c170SemC100++;
         const item = f[C170.COD_ITEM] || '';
         const cstIcms = (f[C170.CST_ICMS] || '').trim();
+        cfopC170 = (f[C170.CFOP] || '').trim();
         const eNcm = infoItem.has(item) ? porNcm.get(infoItem.get(item).ncm) : null;
         if (eNcm) { eNcm.c170++; soma(eNcm.csts, cstIcms); }
         const nomeOperacao = nota ? OPERACAO[nota.operacao] : undefined;
@@ -264,6 +271,14 @@
             add(linha, 'C170', imp.base, bruto, 'CST ' + cst + ' não tributado, mas a base é maior que 0', item, cstLinha, TIPO_NAO_TRIBUTADO, nota, imp.nome);
           } else if (esperado === 'exige_base' && !(base > 0)) {
             add(linha, 'C170', imp.base, bruto || '0', 'CST ' + cst + ' tributado, mas a base é 0', item, cstLinha, TIPO_TRIBUTADO, nota, imp.nome);
+          } else if (esperado === 'por_cfop_90') {
+            // Validado pela fiscal: CFOP de uso/consumo/ativo não tem base; qualquer outro CFOP deve ter.
+            const cfopLabel = cfopC170 || '(vazio)';
+            if (cfg.CFOPS_ICMS_90_SEM_BASE.includes(cfopC170)) {
+              if (base > 0) add(linha, 'C170', imp.base, bruto, 'CST ' + cst + ' com CFOP ' + cfopLabel + ' não deveria ter base', item, cstLinha, TIPO_90_SEM_BASE, nota, imp.nome);
+            } else if (!(base > 0)) {
+              add(linha, 'C170', imp.base, bruto || '0', 'CST ' + cst + ' com CFOP ' + cfopLabel + ' deveria ser tributado, mas a base é 0', item, cstLinha, TIPO_90_TRIBUTADO, nota, imp.nome);
+            }
           } else if (esperado === 'exige_base_analise' && !(base > 0)) {
             add(linha, 'C170', imp.base, bruto || '0',
               'CST ' + cst + ' deve ter base maior que 0, mas a base é 0: analisar caso a caso (pode ser operação sem base)', item, cstLinha, TIPO_ANALISE, nota, imp.nome);
@@ -339,7 +354,7 @@
     return c.finish();
   }
 
-  const CABECALHO_CSV = 'linha;registro;campo;valor;motivo;item;imposto;CST;NF;serie;data;operacao;chave;ncm;descricao;aliquota;valor_imposto';
+  const CABECALHO_CSV = 'linha;registro;campo;valor;motivo;item;imposto;CST;NF;serie;data;operacao;chave;ncm;descricao;aliquota;valor_imposto;cfop';
   const CABECALHO_CSV_NOTAS = 'NF;serie;data;operacao;chave;quantidade_inconsistencias;motivos';
 
   // Campo de texto: sempre entre aspas duplas, aspas internas dobradas.
@@ -360,7 +375,7 @@
       campoCsv(i.motivo) + ';' + campoCsv(i.item) + ';' + campoCsv(i.imposto) + ';' + campoCsv(i.cst) + ';' +
       campoCsv(i.nf) + ';' + campoCsv(i.serie) + ';' + campoCsv(dataCsv(i.data)) + ';' + campoCsv(i.operacao) + ';' +
       campoCsv(i.chave) + ';' + campoCsv(i.ncm) + ';' + campoCsv(i.descricao) + ';' +
-      campoCsv(i.aliquota) + ';' + campoCsv(i.valor_imposto);
+      campoCsv(i.aliquota) + ';' + campoCsv(i.valor_imposto) + ';' + campoCsv(i.cfop);
   }
 
   function linhaCsvNota(n) {
