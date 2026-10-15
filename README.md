@@ -71,6 +71,31 @@ node test/test.js
 
 ---
 
+## Smoke test de tela (Playwright)
+
+Teste automático, sem modelo de IA, que confere se as telas abrem e se a Conferência de NCM e CST funciona. O orquestrador roda em qualquer branch antes de dar a tarefa por pronta.
+
+```bash
+npm install                        # uma vez: instala o Playwright (devDependency)
+npx playwright install chromium    # uma vez: baixa o Chromium, como usuário normal
+npm run smoke
+```
+
+O que o `npm run smoke` faz (`tests/smoke/smoke.js`):
+
+1. Sobe um servidor estático local (Node puro, porta livre) servindo a raiz do repositório.
+2. Abre a Conferência de NCM e CST em Chromium headless e carrega uma amostra **sintética** de SPED Fiscal, gerada por código em `tests/smoke/amostra-sped.js` (empresa, CNPJs, CPF e NCMs inventados; nenhum arquivo SPED é versionado).
+3. Confere a tela de resultado: banner de inconsistências, contadores de registros (0200, C170, C100), CST 051 aceito, bloco "a conferir no XML" e as tabelas de resumo.
+4. Abre também a página inicial, Domínio → TOTVS e Ponto → Folha Domínio.
+5. Falha se houver `console.error` ou `pageerror` em qualquer tela.
+6. Salva screenshots em `tests/smoke/out/` (ignorada no git).
+
+**Para o orquestrador:** rode `npm run smoke` na raiz do repositório, com a branch da tarefa em checkout, e leia a **última linha** da saída: `SMOKE OK` (código de saída 0) ou `SMOKE FALHOU: motivo` (código de saída 1). Se o número esperado na amostra mudar de propósito (regra de conferência alterada de forma aprovada), atualize `ESPERADO` em `tests/smoke/amostra-sped.js`.
+
+**Chromium no Linux:** se o `npm run smoke` falhar com `error while loading shared libraries`, faltam bibliotecas do sistema. Um administrador (com root) roda uma vez `npx playwright install-deps chromium` na máquina.
+
+---
+
 ## Rodar localmente
 
 Abra o arquivo `index.html` da raiz diretamente no navegador (não requer servidor web, Node ou processo de build).
