@@ -2,6 +2,8 @@
 samples/
 
 node_modules/
+# Screenshots do smoke test
+tests/smoke/out/
 *.log
 .DS_Store
 Thumbs.db
