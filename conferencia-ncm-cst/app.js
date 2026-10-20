@@ -22,6 +22,13 @@
     return n.toLocaleString('pt-BR');
   }
 
+  // Tamanho do arquivo em bytes, KB ou MB para a linha de status.
+  function fmtTamanho(bytes) {
+    if (bytes < 1024) return fmt(bytes) + ' bytes';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' KB';
+    return (bytes / (1024 * 1024)).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' MB';
+  }
+
   // IND_OPER do C100: 0 entrada, 1 saída; sem C100 (ou valor fora disso) fica "—".
   function fmtOperacao(op) {
     return op === '0' ? 'Entrada' : op === '1' ? 'Saída' : '—';
@@ -213,7 +220,7 @@
       } else if (res.registros0200 === 0 && res.registrosC170 === 0) {
         setStatus('Não encontrei registros 0200 nem C170. Confira se este é o arquivo SPED Fiscal (EFD ICMS/IPI).', true);
       } else {
-        setStatus('Conferência concluída.', false);
+        setStatus('Conferência concluída: ' + fmt(res.linhasLidas) + ' linhas lidas (' + fmtTamanho(file.size) + ').', false);
         render(res, file.name);
       }
     } catch (e) {
