@@ -1,5 +1,8 @@
 /* Estilos específicos da Conferência de NCM e CST */
 
+/* Cor principal desta ferramenta (cabeçalho, botões, destaques). Sobrescreve só nesta página a --accent de assets/shared.css */
+:root { --accent: #334256; }
+
 .step { margin-top: 30px; }
 h2 { font-size: 1.1rem; margin: 0 0 12px; display: flex; align-items: center; gap: 10px; }
 h2 b {
@@ -12,7 +15,8 @@ h2 b {
   background: var(--card); border: 2px dashed var(--line); border-radius: 12px;
   padding: 34px 20px; transition: border-color .15s, background .15s;
 }
-.drop:hover, .drop:focus-visible, .drop.over { border-color: var(--accent); background: #f0f6f2; outline: none; }
+.drop:hover, .drop:focus-visible, .drop.over { border-color: var(--accent); background: #eef2f6; outline: none; }
+.btn:focus-visible { outline-color: #9aabc0; }
 .drop:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .drop-main { display: block; font-size: 1.15rem; font-weight: 600; word-break: break-all; }
 .drop-sub { display: block; color: var(--muted); font-size: .92rem; margin-top: 2px; }
