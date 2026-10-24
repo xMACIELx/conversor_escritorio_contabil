@@ -1,6 +1,14 @@
 (function (root) {
   'use strict';
 
+  // Ordem e títulos dos grupos da home. Grupo novo entra aqui e em TOOLS, sem mexer em home.js.
+  const GRUPOS = [
+    { id: 'folha', titulo: 'Folha' },
+    { id: 'contabil', titulo: 'Contábil' },
+    { id: 'fiscal', titulo: 'Fiscal' }
+  ];
+
+  // grupo: id de GRUPOS. palavras: termos extras para a busca (sinônimos e termos de arquivo).
   const TOOLS = [
     {
       id: 'dominio-totvs',
@@ -9,7 +17,9 @@
       de: 'Domínio (.txt)',
       para: 'TOTVS (.txt)',
       caminho: 'dominio-totvs/',
-      status: 'pronto'
+      status: 'pronto',
+      grupo: 'contabil',
+      palavras: ['lançamentos', 'contabilidade', 'razão', 'importação']
     },
     {
       id: 'ponto-dominio',
@@ -18,7 +28,9 @@
       de: 'Ponto (PDF) + planilha (.xls)',
       para: 'Planilha (.xls) + Domínio (.txt)',
       caminho: 'ponto-dominio/',
-      status: 'pronto'
+      status: 'pronto',
+      grupo: 'folha',
+      palavras: ['ponto', 'horas', 'faltas', 'dsr', 'relatório do ponto']
     },
     {
       id: 'conferencia-ncm-cst',
@@ -27,7 +39,9 @@
       de: 'SPED Fiscal (.txt)',
       para: 'Lista de inconsistências',
       caminho: 'conferencia-ncm-cst/',
-      status: 'pronto'
+      status: 'pronto',
+      grupo: 'fiscal',
+      palavras: ['sped', 'cst', 'c170', '0200', 'nota fiscal', 'base de cálculo', 'icms', 'pis', 'cofins']
     },
     {
       id: 'medias-dominio',
@@ -36,13 +50,17 @@
       de: 'Planilha (.xlsx) + Relação (PDF)',
       para: 'Domínio (.txt)',
       caminho: 'medias-dominio/',
-      status: 'pronto'
+      status: 'pronto',
+      grupo: 'folha',
+      palavras: ['médias', '13º', 'férias', 'rubrica', 'relação de empregados', 'comissões']
     }
   ];
 
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = TOOLS;
+    TOOLS.GRUPOS = GRUPOS;
   } else {
     root.TOOLS = TOOLS;
+    root.GRUPOS = GRUPOS;
   }
 })(typeof window !== 'undefined' ? window : this);

@@ -13,19 +13,29 @@
     <div class="wrap">
       <h1 id="home-title">Conversores de folha</h1>
       <p class="privacy"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1 2.5 3v4.5c0 3.3 2.3 6 5.5 7.5 3.2-1.5 5.5-4.2 5.5-7.5V3L8 1Zm-1 9.2L4.8 8l.9-.9L7 8.4l3.3-3.3.9.9L7 10.2Z" fill="currentColor"/></svg>
-        Seus dados não saem deste computador</p>
+        Os arquivos não saem deste computador</p>
     </div>
   </header>
 
   <main class="wrap">
+    <section class="busca-bloco" aria-label="Buscar ferramenta">
+      <label for="busca" class="sr-only">Buscar ferramenta</label>
+      <input id="busca" class="busca" type="search" autocomplete="off" placeholder="Buscar ferramenta (ex.: ncm, ponto, médias)" aria-describedby="busca-dica">
+      <div class="busca-linha">
+        <p id="busca-dica" class="busca-dica">Pressione <kbd>/</kbd> para buscar</p>
+        <p id="busca-status" class="busca-status" role="status" hidden></p>
+        <button id="busca-limpar" class="busca-limpar" type="button" hidden>Limpar busca</button>
+      </div>
+    </section>
+
     <section class="tools-section">
-      <div id="tools-grid" class="tools-grid">
-        <!-- Renderizado dinamicamente por assets/home.js -->
+      <div id="tools-lista">
+        <!-- Seções (favoritos, recentes e grupos) renderizadas por assets/home.js -->
       </div>
     </section>
   </main>
 
-  <footer class="wrap foot">Tudo é processado aqui no navegador. Nenhum dado é enviado, salvo ou registrado.</footer>
+  <footer class="wrap foot">Os arquivos são processados neste navegador e nenhum é enviado a servidor. Só a lista de favoritos e de recentes fica salva neste navegador.</footer>
 
   <script src="assets/tools.js"></script>
   <script src="assets/home.js"></script>

@@ -306,6 +306,84 @@ async function telaMediasPadroesKeli(browser, base) {
   await page.close();
 }
 
+// Home: busca, favoritos que persistem após recarregar, recentes ao voltar, teclado e largura de celular.
+async function telaHome(browser, base) {
+  const contexto = await browser.newContext({ viewport: { width: 1280, height: 1000 } });
+  const page = await contexto.newPage();
+  page.setDefaultTimeout(TIMEOUT_MS);
+  const checar = vigiar(page, 'home');
+  const texto = sel => page.textContent(sel).then(t => t.replace(/\s+/g, ' ').trim());
+  const cartoes = page.locator('#tools-lista a.tool-card');
+
+  await page.goto(base + '/', { waitUntil: 'load' });
+  await page.waitForSelector('#tools-lista .tool-card');
+  if ((await cartoes.count()) !== 4) throw falha('home: esperava 4 ferramentas prontas, veio ' + (await cartoes.count()));
+
+  // Busca "ncm": só a Conferência, e os grupos vazios somem.
+  await page.fill('#busca', 'ncm');
+  await page.waitForFunction(() => document.querySelectorAll('#tools-lista a.tool-card').length === 1);
+  if ((await texto('#tools-lista .tool-card-title')) !== 'Conferência de NCM e CST') throw falha('busca por "ncm" não achou a Conferência');
+  if ((await page.locator('#tools-lista .secao-titulo').allTextContents()).join('|') !== 'Fiscal') throw falha('busca por "ncm": grupo vazio não sumiu');
+
+  // Sem resultado: mensagem e botão limpar.
+  await page.fill('#busca', 'xyzabc');
+  await page.waitForSelector('#busca-status:not([hidden])');
+  if (!(await texto('#busca-status')).includes('Nenhuma ferramenta encontrada')) throw falha('sem mensagem de nenhum resultado');
+  await page.click('#busca-limpar');
+  if ((await cartoes.count()) !== 4 || (await page.inputValue('#busca')) !== '') throw falha('limpar busca não restaurou a lista');
+
+  // Estrela fora do link, favorito persiste após recarregar.
+  if ((await page.locator('a.tool-card .btn-fav').count()) !== 0) throw falha('estrela dentro do link');
+  await page.click('.btn-fav[data-id="conferencia-ncm-cst"]');
+  await page.waitForSelector('section[aria-labelledby="secao-favoritos"]');
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForSelector('section[aria-labelledby="secao-favoritos"]');
+  if ((await page.getAttribute('section[aria-labelledby="secao-favoritos"] .btn-fav', 'aria-pressed')) !== 'true') throw falha('favorito não persistiu após recarregar');
+
+  // Recentes: abrir outra ferramenta e voltar.
+  await page.click('a.tool-card[href="dominio-totvs/"]');
+  await page.waitForURL('**/dominio-totvs/');
+  await page.goBack({ waitUntil: 'load' });
+  await page.waitForSelector('section[aria-labelledby="secao-recentes"]');
+  const recente = page.locator('section[aria-labelledby="secao-recentes"] a.tool-card');
+  if ((await recente.count()) !== 1 || (await recente.getAttribute('href')) !== 'dominio-totvs/') throw falha('recentes não mostrou a ferramenta aberta por último');
+
+  // Tecla "/" foca a busca.
+  await page.locator('body').click({ position: { x: 2, y: 2 } });
+  await page.keyboard.press('/');
+  if ((await page.evaluate(() => document.activeElement && document.activeElement.id)) !== 'busca') throw falha('a tecla "/" não focou a busca');
+
+  // Celular: sem rolagem horizontal e estrela com alvo de 44 px.
+  await page.setViewportSize({ width: 375, height: 800 });
+  await page.fill('#busca', '');
+  await page.waitForSelector('#tools-lista .tool-card');
+  const larguras = await page.evaluate(() => ({ pagina: document.documentElement.scrollWidth, janela: window.innerWidth }));
+  if (larguras.pagina > larguras.janela) throw falha('rolagem horizontal no celular (' + larguras.pagina + ' > ' + larguras.janela + ')');
+  const alvo = await page.locator('.btn-fav').first().boundingBox();
+  if (!alvo || alvo.width < 44 || alvo.height < 44) throw falha('estrela menor que 44 px no celular');
+
+  checar();
+  await contexto.close();
+}
+
+// Sem localStorage (navegador bloqueou): a home funciona, sem seções de favoritos/recentes e sem erro.
+async function telaHomeSemArmazenamento(browser, base) {
+  const contexto = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  await contexto.addInitScript(() => {
+    Object.defineProperty(window, 'localStorage', { get() { throw new Error('armazenamento bloqueado'); } });
+  });
+  const page = await contexto.newPage();
+  page.setDefaultTimeout(TIMEOUT_MS);
+  const checar = vigiar(page, 'home sem armazenamento');
+  await page.goto(base + '/', { waitUntil: 'load' });
+  await page.waitForSelector('#tools-lista .tool-card');
+  if ((await page.locator('#tools-lista a.tool-card').count()) !== 4) throw falha('home sem armazenamento não listou as 4 ferramentas');
+  if ((await page.locator('.btn-fav').count()) !== 0) throw falha('home sem armazenamento mostrou estrela');
+  if ((await page.locator('section[aria-labelledby="secao-favoritos"], section[aria-labelledby="secao-recentes"]').count()) !== 0) throw falha('home sem armazenamento mostrou favoritos ou recentes');
+  checar();
+  await contexto.close();
+}
+
 async function telaSimples(browser, base, [nome, caminho]) {
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   page.setDefaultTimeout(TIMEOUT_MS);
@@ -343,6 +421,8 @@ async function main() {
     await telaMediasFormatoReal(browser, base);
     await telaMediasDuasPlanilhas(browser, base);
     await telaMediasPadroesKeli(browser, base);
+    await telaHome(browser, base);
+    await telaHomeSemArmazenamento(browser, base);
     for (const t of TELAS_SIMPLES) await telaSimples(browser, base, t);
   } finally {
     if (browser) await browser.close();

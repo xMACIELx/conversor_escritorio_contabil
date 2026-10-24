@@ -1,10 +1,10 @@
 'use strict';
-// Runner das checagens de regra: test/conferencia.js, test/ponto.js, test/ponto-setembro.js e test/medias-dominio.js
+// Runner das checagens de regra: test/conferencia.js, test/ponto.js, test/ponto-setembro.js, test/medias-dominio.js e test/home.js
 // exportam run(check) (não usam node:test), então "node --test" não as executa de verdade.
 // Sai com 1 se qualquer checagem falhar. Partes que dependem de samples/ (fora do Git) são puladas.
 const path = require('path');
 
-const ARQUIVOS = ['conferencia.js', 'ponto.js', 'ponto-setembro.js', 'medias-dominio.js'];
+const ARQUIVOS = ['conferencia.js', 'ponto.js', 'ponto-setembro.js', 'medias-dominio.js', 'home.js'];
 const AMOSTRA_AUSENTE = /^amostras .* presentes/;
 
 let passes = 0;
