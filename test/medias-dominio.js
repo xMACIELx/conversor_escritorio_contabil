@@ -9,6 +9,8 @@ const CFG_DATA = require(path.join(DIR, 'config.js')).FORMATO_DATA;
 const XLSX = require(path.join(DIR, '..', 'ponto-dominio', 'vendor', 'xlsx.full.min.js'));
 // Amostras sintéticas do formato real (SYN-166), as mesmas que o smoke usa
 const GEN = require(path.join(__dirname, '..', 'tests', 'smoke', 'medias-amostra.js'));
+// SYN-184: 13º com Matrícula e férias sem Matrícula (cabeçalhos alternativos, abas extras)
+const GEN2 = require(path.join(__dirname, '..', 'tests', 'smoke', 'medias-ferias-amostra.js'));
 
 // Relação de Empregados sintética (código e nome, como o PDF da Domínio entregaria)
 const LISTA = [
@@ -117,7 +119,10 @@ module.exports = async function run(check) {
     maria.valores.find(v => v.coluna.cabecalho === 'HE 50% (h:mm)').valor === 7431 &&
     maria.valores.find(v => v.coluna.cabecalho === 'Assiduidade (R$)').valor === 40000);
   const semDsr = Core.lerLancamentos(XLSX, pasta(planilha(BASE, CABECALHO.filter(c => c !== 'DSR outros (R$)'))));
-  check('coluna de valor ausente bloqueia (não sai sem ela)', semDsr.pendencias.some(p => p.tipo === 'coluna_ausente' && p.bloqueia));
+  // SYN-184: coluna ausente virou aviso (não bloqueia). Antes bloqueava; a mudança é pedida na tarefa.
+  check('coluna de valor ausente vira aviso e não bloqueia (fica no relatório, o arquivo sai)', semDsr.avisos.some(p => p.tipo === 'coluna_ausente' && p.bloqueia === false) &&
+    !semDsr.pendencias.some(p => p.tipo === 'coluna_ausente') &&
+    Core.gerarTxt({ empresa: '7', lancamentos: semDsr.linhas, pendencias: semDsr.pendencias, casamento: Core.casarEmpregados(semDsr.linhas, LISTA) }).bloqueado === false);
   const compRuim = Core.lerLancamentos(XLSX, pasta(planilha([lin('005', 'Maria da Silva', '13/2026', { 'HE 50% (h:mm)': '1:00' })])));
   check('competência fora de MM/AAAA vira pendência e a linha não entra', compRuim.linhas.length === 0 && compRuim.pendencias.some(p => p.tipo === 'competencia_invalida'));
   const valRuim = Core.lerLancamentos(XLSX, pasta(planilha([lin('001', 'Maria da Silva', '09/2026', { 'Prêmio (R$)': 'R$ 4a' })])));
@@ -293,4 +298,89 @@ module.exports = async function run(check) {
   check('formato real: "FRANCIELE FERREIRA DA" + "SILVA OPERADOR" sai como parcial; "MARCOS..." (sem cargo no mesmo texto) não',
     seguro(() => Core.extrairEmpregadosDeItens([GEN.ITENS_FORMATO_REAL], GEN.PLANILHA_COMPETENCIA.map(p => p[1])), SEM).empregados
       .filter(e => e.parcial).map(e => e.codigo).join() === '304');
+
+  // ---- SYN-184: planilha de férias junto com a do 13º (amostras sintéticas de tests/smoke/medias-ferias-amostra.js) ----
+  const LISTA_FERIAS = [
+    { codigo: '101', nome: 'Ana Teste Lima' }, { codigo: '102', nome: 'Bruno Teste Souza' },
+    { codigo: '103', nome: 'Carla Teste Rocha' }, { codigo: '104', nome: 'Diego Teste Alves' }
+  ];
+  const lerWb = buf => XLSX.read(buf, { type: 'buffer' });
+  const feriasCom = fn => GEN2.LINHAS_FERIAS.map(fn);
+  // Mesmo texto de cabeçalho, sem acento e em maiúsculas (a comparação não diferencia)
+  const semAcentoCaixa = s => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase();
+  const linhaCaixa = l => Object.fromEntries(Object.keys(l).map(k => [semAcentoCaixa(k), l[k]]));
+
+  console.log('\nMédias → Domínio: 13º e férias juntos (SYN-184)');
+  const planilhasBase = () => [{ rotulo: '13º', wb: lerWb(GEN2.gerarPlanilhaDecimoTerceiro()) },
+    { rotulo: 'férias', wb: lerWb(GEN2.gerarPlanilhaFerias()) }];
+  const uniao = Core.unirPlanilhas(XLSX, planilhasBase());
+  const casUniao = Core.casarEmpregados(uniao.linhas, LISTA_FERIAS);
+  const txtUniao = Core.gerarTxt({ empresa: '7', lancamentos: uniao.linhas, pendencias: uniao.pendencias, casamento: casUniao });
+  const rel13 = uniao.relatorio.find(r => r.rotulo === '13º');
+  const relFerias = uniao.relatorio.find(r => r.rotulo === 'férias');
+
+  check('13º: lê 3 linhas e 3 empregados, na aba "Lançamentos por competência" (a primeira aba "Totais" é ignorada)',
+    rel13.linhasLidas === 3 && rel13.empregados === 3 && rel13.aba === 'Lançamentos por competência', JSON.stringify(rel13));
+  check('férias sem Matrícula: lê 4 linhas e 3 empregados, na aba "Por competência" (Totais, Critérios e Complementação 2025 ignoradas)',
+    relFerias.linhasLidas === 4 && relFerias.empregados === 3 && relFerias.aba === 'Por competência', JSON.stringify(relFerias));
+  check('férias com cabeçalhos alternativos ("Assiduidade R$", "DSR horas extras R$") não tem coluna ausente',
+    relFerias.colunasAusentes.length === 0, JSON.stringify(relFerias.colunasAusentes));
+  check('13º sem a coluna DSR comissões: aviso (não bloqueia) com a rubrica listada',
+    uniao.pendencias.length === 1 && uniao.pendencias[0].tipo === 'coluna_ausente' && uniao.pendencias[0].bloqueia === false &&
+    uniao.pendencias[0].planilha === '13º' && uniao.pendencias[0].colunas.join() === 'DSR comissões', JSON.stringify(uniao.pendencias));
+  check('sobreposição idêntica: 5 valores iguais (Ana 3, Bruno 2) entram uma vez e são contados como duplicatas removidas',
+    uniao.duplicatasRemovidas === 5, String(uniao.duplicatasRemovidas));
+  check('empregado sem Matrícula cruza pelo nome com o código da Relação (Ana Teste Lima = 101, exato)',
+    casUniao.get('ANA TESTE LIMA').tipo === 'exato' && casUniao.get('ANA TESTE LIMA').codigo === '101', JSON.stringify(casUniao.get('ANA TESTE LIMA')));
+  const TXT_UNIAO = ['7;101;01/09/2026;150;1000', '7;101;01/09/2026;236;10000', '7;101;01/09/2026;250;500',
+    '7;102;01/09/2026;150;230', '7;102;01/09/2026;236;5000', '7;104;01/09/2026;236;8000', '7;104;01/09/2026;250;400',
+    '7;101;01/12/2025;250;900'];
+  check('TXT único: 13º e férias juntos, sem repetição (8 linhas, Ana 09/2026 não duplica)',
+    JSON.stringify(txtUniao.linhas) === JSON.stringify(TXT_UNIAO) && txtUniao.bloqueado === false, JSON.stringify(txtUniao.linhas));
+  check('ordem de leitura não muda o resultado: férias primeiro, 13º depois (mesmas 8 linhas)',
+    JSON.stringify(Core.gerarTxt({ empresa: '7', lancamentos: Core.unirPlanilhas(XLSX, planilhasBase().reverse()).linhas,
+      pendencias: [], casamento: casUniao }).linhas.slice().sort()) === JSON.stringify(TXT_UNIAO.slice().sort()));
+  const ferUnica = Core.unirPlanilhas(XLSX, [{ rotulo: 'férias', wb: lerWb(GEN2.gerarPlanilhaFerias()) }]);
+  check('uma só planilha (só férias) também passa pela junção, sem duplicatas', ferUnica.duplicatasRemovidas === 0 &&
+    ferUnica.pendencias.length === 0 && ferUnica.linhas.length === 4);
+  let dois = false;
+  try { Core.unirPlanilhas(XLSX, [{ rotulo: 'a', wb: lerWb(GEN2.gerarPlanilhaFerias()) }, { rotulo: 'b', wb: lerWb(GEN2.gerarPlanilhaFerias()) }, { rotulo: 'c', wb: lerWb(GEN2.gerarPlanilhaFerias()) }]); } catch (e) { dois = true; }
+  check('mais de duas planilhas é recusado', dois);
+
+  console.log('\nMédias → Domínio: 13º e férias juntos, sobreposição com valor diferente (SYN-184)');
+  const conflito = Core.unirPlanilhas(XLSX, [{ rotulo: '13º', wb: lerWb(GEN2.gerarPlanilhaDecimoTerceiro()) },
+    { rotulo: 'férias', wb: lerWb(GEN2.gerarPlanilhaFerias(feriasCom(l => (l['Empregado'] === 'Bruno Teste Souza' && l['Competência (MM/AAAA)'] === '09/2026' ? Object.assign({}, l, { 'HE 50% (h:mm)': '2:45' }) : l)))) }]);
+  const conf = conflito.pendencias.filter(p => p.tipo === 'conflito_entre_planilhas');
+  check('valor diferente na mesma chave bloqueia com uma linha de conflito', conf.length === 1 && conf[0].bloqueia === true, JSON.stringify(conflito.pendencias));
+  check('a diferença listada tem empregado, competência, rubrica e os dois valores (13º 2:30, férias 2:45)',
+    conf.length === 1 && /Bruno Teste Souza/.test(conf[0].detalhe) && /09\/2026/.test(conf[0].detalhe) && /HE 50%/.test(conf[0].detalhe) &&
+    /13º = 2:30/.test(conf[0].detalhe) && /férias = 2:45/.test(conf[0].detalhe), JSON.stringify(conf));
+  const txtConflito = Core.gerarTxt({ empresa: '7', lancamentos: conflito.linhas, pendencias: conflito.pendencias,
+    casamento: Core.casarEmpregados(conflito.linhas, LISTA_FERIAS) });
+  check('com conflito o arquivo não sai (bloqueado)', txtConflito.bloqueado === true);
+
+  console.log('\nMédias → Domínio: DSR comissões e casos de bloqueio (SYN-184)');
+  const dscomComValor = gerarTxtDe(GEN2.gerarPlanilhaFerias(feriasCom(l => (l['Empregado'] === 'Diego Teste Alves' ? Object.assign({}, l, { 'DSR comissões R$': 'R$ 10,00' }) : l))));
+  check('DSR comissões com valor maior que zero e sem código bloqueia', dscomComValor.bloqueado === true &&
+    dscomComValor.pendencias.some(p => p.tipo === 'rubrica_sem_codigo' && /DSR comissões/.test(p.detalhe)), JSON.stringify(dscomComValor.pendencias));
+  const dscomZero = gerarTxtDe(GEN2.gerarPlanilhaFerias());
+  check('DSR comissões com valor zero não bloqueia (a coluna existe e está zerada)', dscomZero.bloqueado === false);
+  const repetidoSemMatricula = Core.unirPlanilhas(XLSX, [{ rotulo: 'férias', wb: lerWb(GEN2.gerarPlanilhaFerias(
+    feriasCom(l => l).concat([Object.assign({}, GEN2.LINHAS_FERIAS[2])]))) }]);
+  check('sem matrícula, o mesmo nome e competência duas vezes na planilha bloqueia (nome repetido)',
+    repetidoSemMatricula.pendencias.some(p => p.tipo === 'nome_repetido' && p.bloqueia === true), JSON.stringify(repetidoSemMatricula.pendencias));
+  const abaUnica = Core.lerLancamentos(XLSX, lerWb(GEN2.gerarPlanilhaAbaUnica(GEN2.LINHAS_13)));
+  check('planilha com uma aba de nome desconhecido: lê a primeira aba (Planilha1)', abaUnica.aba === 'Planilha1' && abaUnica.linhas.length === 3,
+    abaUnica.aba + ' ' + abaUnica.linhas.length);
+  const feriasCaixa = Core.lerLancamentos(XLSX, lerWb(GEN2.gerarPlanilha(GEN2.CABECALHO_FERIAS.map(semAcentoCaixa),
+    GEN2.LINHAS_FERIAS.map(linhaCaixa), 'Por competência')));
+  check('cabeçalhos sem acento e em maiúsculas ("COMPETENCIA (MM/AAAA)", "ASSIDUIDADE R$") são lidos',
+    feriasCaixa.linhas.length === 4 && feriasCaixa.avisos.length === 0 && feriasCaixa.linhas[0].valores.find(v => v.coluna.rubrica === '236').valor === 10000,
+    JSON.stringify(feriasCaixa.avisos));
+
+  // Lê uma planilha de uma vez (a ferramenta lê uma planilha: a junção com a outra é em unirPlanilhas)
+  function gerarTxtDe(buf) {
+    const lido = Core.lerLancamentos(XLSX, lerWb(buf));
+    return Core.gerarTxt({ empresa: '7', lancamentos: lido.linhas, pendencias: lido.pendencias, casamento: Core.casarEmpregados(lido.linhas, LISTA_FERIAS) });
+  }
 };
