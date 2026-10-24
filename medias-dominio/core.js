@@ -97,8 +97,8 @@
 
   // Nome da planilha que casa com o texto da linha do PDF (nome + primeiras palavras do cargo).
   // Casa quando o texto é igual ao nome ou começa com ele seguido de espaço. Escolhe o mais longo.
-  function nomeDaPlanilhaNoTexto(texto_, nomes) {
-    const t = normalizarNome(texto_);
+  function nomeDaPlanilhaNoTexto(textoLinha, nomes) {
+    const t = normalizarNome(textoLinha);
     let melhor = null;
     nomes.forEach(n => {
       if ((t === n.norm || t.startsWith(n.norm + ' ')) && (!melhor || n.norm.length > melhor.norm.length)) melhor = n;
