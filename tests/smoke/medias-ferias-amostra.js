@@ -78,7 +78,34 @@ function gerarPlanilhaAbaUnica(linhas) {
   return Buffer.from(XLSX.write(wb, { type: 'array', bookType: 'xlsx' }));
 }
 
+// ---- Smoke da tela com 13º e férias (SYN-185) ----
+// Relação de Empregados com os quatro nomes das duas planilhas (códigos inventados), no mesmo formato do PDF sintético.
+const { pdfSintetico } = require('./medias-amostra.js');
+const RELACAO_DUAS = [
+  { codigo: '101', nome: 'ANA TESTE LIMA' }, { codigo: '102', nome: 'BRUNO TESTE SOUZA' },
+  { codigo: '103', nome: 'CARLA TESTE ROCHA' }, { codigo: '104', nome: 'DIEGO TESTE ALVES' }
+];
+
+function gerarRelacaoDuasPlanilhas() {
+  const itens = [{ s: 'Relação de Empregados (AMOSTRA SINTÉTICA)', x: 40, y: 760 },
+    { s: 'Código', x: 40, y: 720 }, { s: 'Nome', x: 120, y: 720 }, { s: 'Cargo', x: 330, y: 720 }];
+  RELACAO_DUAS.forEach((e, i) => {
+    const y = 700 - i * 20;
+    itens.push({ s: e.codigo, x: 40, y }, { s: e.nome, x: 120, y }, { s: 'AUXILIAR', x: 330, y });
+  });
+  return pdfSintetico(itens);
+}
+
+// TXT das duas planilhas juntas, sem conflito: 8 linhas. A sobreposição idêntica (Ana e Bruno em 09/2026) entra uma vez
+// (5 duplicatas iguais removidas). Diego só está nas férias. Ana 12/2025 só tem DSR horas extras.
+const TXT_DUAS_PLANILHAS = [
+  '7;101;01/09/2026;150;1000', '7;101;01/09/2026;236;10000', '7;101;01/09/2026;250;500',
+  '7;102;01/09/2026;150;230', '7;102;01/09/2026;236;5000', '7;104;01/09/2026;236;8000',
+  '7;104;01/09/2026;250;400', '7;101;01/12/2025;250;900'
+];
+
 module.exports = {
   CABECALHO_13, CABECALHO_FERIAS, LINHAS_13, LINHAS_FERIAS,
-  gerarPlanilha, gerarPlanilhaDecimoTerceiro, gerarPlanilhaFerias, gerarPlanilhaAbaUnica
+  gerarPlanilha, gerarPlanilhaDecimoTerceiro, gerarPlanilhaFerias, gerarPlanilhaAbaUnica,
+  gerarRelacaoDuasPlanilhas, TXT_DUAS_PLANILHAS
 };

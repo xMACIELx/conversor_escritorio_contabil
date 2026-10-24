@@ -200,5 +200,6 @@ function gerarRelacaoPdfOrdemFluxo() {
 module.exports = {
   gerarPlanilhaMedias, gerarRelacaoPdf, TXT_ESPERADO,
   ITENS_FORMATO_REAL, PLANILHA_COMPETENCIA, FORMATO_REAL, gerarPlanilhaCompetencia, gerarRelacaoPdfFormatoReal,
-  ITENS_ORDEM_FLUXO, PLANILHA_ORDEM_FLUXO, ORDEM_FLUXO, gerarPlanilhaOrdemFluxo, gerarRelacaoPdfOrdemFluxo
+  ITENS_ORDEM_FLUXO, PLANILHA_ORDEM_FLUXO, ORDEM_FLUXO, gerarPlanilhaOrdemFluxo, gerarRelacaoPdfOrdemFluxo,
+  pdfSintetico
 };

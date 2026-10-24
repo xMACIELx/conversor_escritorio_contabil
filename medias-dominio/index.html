@@ -38,13 +38,20 @@
     </section>
 
     <section class="step">
-      <h2><b>2</b> Envie a planilha e a Relação de Empregados</h2>
+      <h2><b>2</b> Envie as planilhas e a Relação de Empregados</h2>
+      <p class="hint">Envie a planilha do 13º, a de férias ou as duas (pelo menos uma). As duas viram um arquivo só.</p>
       <div class="uploads">
         <label id="drop-xlsx" class="drop" tabindex="0">
           <input id="file-xlsx" type="file" accept=".xlsx,.xls" hidden>
-          <span class="drop-title">Planilha de apuração (.xlsx)</span>
+          <span class="drop-title">Planilha do 13º (.xlsx)</span>
           <span class="drop-main" id="xlsx-main">Arraste a planilha aqui</span>
           <span class="drop-sub" id="xlsx-sub">ou clique para procurar no computador</span>
+        </label>
+        <label id="drop-ferias" class="drop" tabindex="0">
+          <input id="file-ferias" type="file" accept=".xlsx,.xls" hidden>
+          <span class="drop-title">Planilha de férias (.xlsx, opcional)</span>
+          <span class="drop-main" id="ferias-main">Arraste a planilha aqui</span>
+          <span class="drop-sub" id="ferias-sub">ou clique para procurar no computador</span>
         </label>
         <label id="drop-pdf" class="drop" tabindex="0">
           <input id="file-pdf" type="file" accept=".pdf,application/pdf" hidden>
@@ -57,7 +64,7 @@
 
     <section class="step">
       <h2><b>3</b> Códigos das rubricas</h2>
-      <p class="hint">Uma linha por coluna da planilha. Coluna com valor e sem código bloqueia a geração. Os códigos são só o que a contabilidade confirmou na Domínio; confira antes de gerar.</p>
+      <p class="hint">Uma linha por coluna das planilhas. Coluna com valor e sem código bloqueia a geração. Os códigos são só o que a contabilidade confirmou na Domínio; confira antes de gerar.</p>
       <div class="scroll">
         <table id="t-rubricas">
           <thead>
@@ -85,7 +92,18 @@
           <li class="info"><span class="mark">i</span><span><strong id="resumo-cruzados"></strong></span></li>
           <li class="info"><span class="mark">i</span><span><strong id="resumo-pendencias"></strong></span></li>
           <li class="info"><span class="mark">i</span><span><strong id="resumo-linhas"></strong></span></li>
+          <li class="info"><span class="mark">i</span><span><strong id="resumo-total"></strong></span></li>
+          <li class="info"><span class="mark">i</span><span><strong id="resumo-duplicatas"></strong></span></li>
         </ul>
+
+        <h3>Planilhas lidas</h3>
+        <div id="blocos-planilhas"></div>
+
+        <section id="sec-conflitos" hidden>
+          <h3>Conflitos entre planilhas <span class="note">(bloqueiam o arquivo)</span></h3>
+          <p class="hint">O mesmo empregado, competência e rubrica aparecem nas duas planilhas com valores diferentes. Confira qual está certo antes de gerar.</p>
+          <div class="scroll"><table id="t-conflitos"></table></div>
+        </section>
 
         <h3>Empregados cruzados <span id="n-cruzados" class="note"></span></h3>
         <div class="scroll"><table id="t-cruzados"></table></div>
