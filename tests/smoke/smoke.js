@@ -8,6 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const { gerarAmostraSped, ESPERADO } = require('./amostra-sped.js');
 const { gerarPlanilhaMedias, gerarRelacaoPdf, TXT_ESPERADO, gerarPlanilhaCompetencia, gerarRelacaoPdfFormatoReal, FORMATO_REAL } = require('./medias-amostra.js');
+const { gerarPlanilhaDecimoTerceiro, gerarPlanilhaFerias, gerarRelacaoDuasPlanilhas, TXT_DUAS_PLANILHAS, LINHAS_FERIAS } = require('./medias-ferias-amostra.js');
 
 const RAIZ = path.resolve(__dirname, '..', '..');
 const SAIDA = path.join(__dirname, 'out');
@@ -187,6 +188,69 @@ async function telaMediasFormatoReal(browser, base) {
   await page.close();
 }
 
+// Médias → Domínio com 13º e férias (SYN-185): dois campos, relatório por planilha, duplicata igual removida e aviso de
+// coluna ausente (o 13º de amostra não tem DSR comissões). Depois, férias com valor diferente de Bruno: conflito bloqueia.
+async function telaMediasDuasPlanilhas(browser, base) {
+  const XLSX_TIPO = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  const page = await browser.newPage({ viewport: { width: 1280, height: 1000 } });
+  page.setDefaultTimeout(TIMEOUT_MS);
+  const checar = vigiar(page, 'Médias → Domínio (13º e férias)');
+  const texto = id => page.textContent(id).then(t => t.replace(/\s+/g, ' ').trim());
+
+  await page.goto(base + '/medias-dominio/', { waitUntil: 'load' });
+  await page.waitForSelector('#rub-0');
+  await page.fill('#empresa', '7');
+  await page.setInputFiles('#file-xlsx', { name: 'decimo-sintetico.xlsx', mimeType: XLSX_TIPO, buffer: gerarPlanilhaDecimoTerceiro() });
+  await page.setInputFiles('#file-ferias', { name: 'ferias-sintetica.xlsx', mimeType: XLSX_TIPO, buffer: gerarPlanilhaFerias() });
+  await page.setInputFiles('#file-pdf', { name: 'relacao-sintetica-duas-planilhas.pdf', mimeType: 'application/pdf', buffer: gerarRelacaoDuasPlanilhas() });
+  await page.click('#gerar');
+  try {
+    await page.waitForSelector('#resultado:not([hidden])');
+  } catch (e) {
+    throw falha('o relatório com 13º e férias não apareceu (aviso: ' + (await texto('#aviso')) + ')');
+  }
+
+  const esperado = [
+    [await texto('#banner'), 'Arquivo pronto: ' + TXT_DUAS_PLANILHAS.length + ' linha(s) para 3 empregado(s)', 'banner'],
+    [await texto('#resumo-total'), 'Total geral: 7 linha(s) lida(s) nas planilhas, 4 empregado(s)', 'total geral'],
+    [await texto('#resumo-duplicatas'), 'Duplicatas iguais removidas: 5', 'duplicatas'],
+    [await texto('#blocos-planilhas'), '13º: decimo-sintetico.xlsx', 'bloco do 13º (arquivo)'],
+    [await texto('#blocos-planilhas'), 'Aba lida: "Lançamentos por competência". Linhas lidas: 3', 'bloco do 13º (aba)'],
+    [await texto('#blocos-planilhas'), 'férias: ferias-sintetica.xlsx', 'bloco das férias (arquivo)'],
+    [await texto('#blocos-planilhas'), 'Aba lida: "Por competência". Linhas lidas: 4', 'bloco das férias (aba)'],
+    [await texto('#blocos-planilhas'), 'coluna(s) ausente(s) nesta planilha: DSR comissões', 'aviso de coluna ausente'],
+    [await texto('#resumo-cruzados'), 'Empregados cruzados: 4 de 4 nome(s)', 'resumo'],
+    [await texto('#t-totais'), '12:30', 'total da rubrica 150'],
+    [await texto('#t-totais'), 'R$ 230,00', 'total da rubrica 236'],
+    [await texto('#t-totais'), 'R$ 18,00', 'total da rubrica 250']
+  ];
+  for (const [real, trecho, onde] of esperado) {
+    if (!real.includes(trecho)) throw falha('13º e férias: relatório inesperado em ' + onde + ': esperava "' + trecho + '", veio "' + real + '"');
+  }
+  if (await page.isVisible('#sec-conflitos')) throw falha('13º e férias: seção de conflitos apareceu sem conflito');
+  const txt = (await page.inputValue('#txt-previa')).replace(/\r\n/g, '\n');
+  if (txt !== TXT_DUAS_PLANILHAS.join('\n') + '\n') throw falha('13º e férias: arquivo gerado diferente do esperado: ' + JSON.stringify(txt));
+  await page.screenshot({ path: path.join(SAIDA, 'medias-dominio-duas-planilhas.png'), fullPage: true });
+
+  // Bruno em 09/2026: HE 50% de 2:30 no 13º e de 2:45 nas férias. Conflito bloqueia e lista a diferença.
+  const feriasConflito = LINHAS_FERIAS.map(l => (l['Empregado'] === 'Bruno Teste Souza' && l['Competência (MM/AAAA)'] === '09/2026'
+    ? Object.assign({}, l, { 'HE 50% (h:mm)': '2:45' }) : l));
+  await page.setInputFiles('#file-ferias', { name: 'ferias-sintetica-conflito.xlsx', mimeType: XLSX_TIPO, buffer: gerarPlanilhaFerias(feriasConflito) });
+  await page.click('#gerar');
+  await page.waitForSelector('#banner.bad');
+  const bloqueio = await texto('#banner');
+  if (!bloqueio.includes('Arquivo não gerado') || !bloqueio.includes('Conflitos entre planilhas: 1')) throw falha('conflito sem o bloqueio esperado: "' + bloqueio + '"');
+  const listaConflito = await texto('#t-conflitos');
+  for (const trecho of ['Bruno Teste Souza', '09/2026', 'HE 50%', '13º = 2:30', 'férias = 2:45']) {
+    if (!listaConflito.includes(trecho)) throw falha('lista de conflitos sem "' + trecho + '": "' + listaConflito + '"');
+  }
+  if (!(await page.isVisible('#sec-conflitos'))) throw falha('a seção de conflitos não apareceu');
+  if (await page.isVisible('#baixar')) throw falha('o botão de baixar apareceu com conflito');
+
+  checar();
+  await page.close();
+}
+
 async function telaSimples(browser, base, [nome, caminho]) {
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   page.setDefaultTimeout(TIMEOUT_MS);
@@ -222,6 +286,7 @@ async function main() {
     await telaConferencia(browser, base);
     await telaMedias(browser, base);
     await telaMediasFormatoReal(browser, base);
+    await telaMediasDuasPlanilhas(browser, base);
     for (const t of TELAS_SIMPLES) await telaSimples(browser, base, t);
   } finally {
     if (browser) await browser.close();

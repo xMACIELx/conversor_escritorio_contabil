@@ -5,7 +5,14 @@
   const CFG = window.MediasConfig, Core = window.MediasCore;
   const NOME_ARQUIVO = 'lancar_medias.txt';
 
-  const state = { xlsxBuf: null, pdfBuf: null, res: null };
+  // dec (13º) e ferias: { buf, nome } ou null. pdfBuf: a Relação de Empregados.
+  const state = { dec: null, ferias: null, pdfBuf: null, res: null };
+  // Áreas de envio por tipo: cada uma tem o quadro (drop) e os textos de nome (main) e tamanho (sub)
+  const AREAS = {
+    dec: { drop: 'drop-xlsx', main: 'xlsx-main', sub: 'xlsx-sub' },
+    ferias: { drop: 'drop-ferias', main: 'ferias-main', sub: 'ferias-sub' },
+    pdf: { drop: 'drop-pdf', main: 'pdf-main', sub: 'pdf-sub' }
+  };
   const rubricaInputs = [];
 
   function el(tag, cls, text) {
@@ -50,18 +57,19 @@
   }
 
   // Guarda o arquivo e mostra nome e tamanho na área de envio. Recusa tipo errado com aviso.
+  // tipo: 'dec' (13º), 'ferias' (férias) ou 'pdf' (Relação de Empregados).
   function carregar(file, tipo) {
-    const ok = tipo === 'xlsx' ? /\.xlsx?$/i.test(file.name) : /\.pdf$/i.test(file.name);
+    const ok = tipo === 'pdf' ? /\.pdf$/i.test(file.name) : /\.xlsx?$/i.test(file.name);
     if (!ok) {
-      mostrarAviso(tipo === 'xlsx' ? 'Envie a planilha de apuração em .xlsx (ou .xls).' : 'Envie a Relação de Empregados em PDF.');
+      mostrarAviso(tipo === 'pdf' ? 'Envie a Relação de Empregados em PDF.' : 'Envie a planilha em .xlsx (ou .xls).');
       return;
     }
     file.arrayBuffer().then(buf => {
-      const xlsx = tipo === 'xlsx';
-      state[xlsx ? 'xlsxBuf' : 'pdfBuf'] = buf;
-      $(xlsx ? 'drop-xlsx' : 'drop-pdf').classList.add('loaded');
-      $(xlsx ? 'xlsx-main' : 'pdf-main').textContent = file.name;
-      $(xlsx ? 'xlsx-sub' : 'pdf-sub').textContent = tamanho(file.size);
+      const area = AREAS[tipo];
+      if (tipo === 'pdf') state.pdfBuf = buf; else state[tipo] = { buf: buf, nome: file.name };
+      $(area.drop).classList.add('loaded');
+      $(area.main).textContent = file.name;
+      $(area.sub).textContent = tamanho(file.size);
       invalidar();
     });
   }
@@ -76,7 +84,7 @@
       const r = rubricaInputs[i].value.trim();
       if (r !== '' && !/^\d+$/.test(r)) lista.push('A rubrica de "' + c.cabecalho + '" deve ter só números.');
     });
-    if (!state.xlsxBuf) lista.push('Envie a planilha de apuração (.xlsx).');
+    if (!state.dec && !state.ferias) lista.push('Envie a planilha do 13º ou a de férias (.xlsx).');
     if (!state.pdfBuf) lista.push('Envie a Relação de Empregados (PDF).');
     return lista;
   }
@@ -98,7 +106,7 @@
   function setBusy(on) {
     $('gerar').disabled = on;
     $('gerar').textContent = on ? 'Gerando...' : 'Gerar';
-    $('status').textContent = on ? 'Lendo a planilha e a Relação de Empregados...' : '';
+    $('status').textContent = on ? 'Lendo as planilhas e a Relação de Empregados...' : '';
   }
 
   function mostrarAviso(msg) {
@@ -119,13 +127,22 @@
     setBusy(true);
     try {
       aplicarConfig();
-      const wb = window.XLSX.read(state.xlsxBuf, { type: 'array' });
-      const lido = Core.lerLancamentos(window.XLSX, wb);
-      const rel = await Core.lerRelacaoPdf(window.pdfjsLib, new Uint8Array(state.pdfBuf.slice(0)), lido.linhas.map(l => l.nome));
-      const casamento = Core.casarEmpregados(lido.linhas, rel.empregados);
-      const pendencias = lido.pendencias.concat(rel.pendencias.map(p => Object.assign({ bloqueia: false }, p)));
-      const res = Core.gerarTxt({ empresa: $('empresa').value, lancamentos: lido.linhas, pendencias, casamento });
-      state.res = Object.assign(res, { casamento, semCodigo: colunasSemCodigo(lido.linhas) });
+      // 13º e férias, nesta ordem; cada uma é lida pela aba que tiver o cabeçalho esperado
+      const planilhas = [];
+      if (state.dec) planilhas.push({ rotulo: '13º', arquivo: state.dec.nome, wb: window.XLSX.read(state.dec.buf, { type: 'array' }) });
+      if (state.ferias) planilhas.push({ rotulo: 'férias', arquivo: state.ferias.nome, wb: window.XLSX.read(state.ferias.buf, { type: 'array' }) });
+      const uniao = Core.unirPlanilhas(window.XLSX, planilhas);
+      const rel = await Core.lerRelacaoPdf(window.pdfjsLib, new Uint8Array(state.pdfBuf.slice(0)), uniao.linhas.map(l => l.nome));
+      const casamento = Core.casarEmpregados(uniao.linhas, rel.empregados);
+      const pendencias = uniao.pendencias.concat(rel.pendencias.map(p => Object.assign({ bloqueia: false }, p)));
+      const res = Core.gerarTxt({ empresa: $('empresa').value, lancamentos: uniao.linhas, pendencias, casamento });
+      state.res = Object.assign(res, {
+        casamento,
+        semCodigo: colunasSemCodigo(uniao.linhas),
+        planilhas: uniao.relatorio.map((r, i) => Object.assign({ arquivo: planilhas[i].arquivo }, r)),
+        duplicatasRemovidas: uniao.duplicatasRemovidas,
+        totalEmpregados: new Set(uniao.linhas.map(l => Core.normalizarNome(l.nome))).size
+      });
       mostrarRelatorio();
     } catch (e) {
       invalidar();
@@ -139,6 +156,7 @@
   const ROTULOS = {
     sem_par: 'Sem código', ambiguo: 'Ambíguo', rubrica_sem_codigo: 'Rubrica sem código', valor_negativo: 'Valor negativo',
     valor_invalido: 'Valor ilegível', competencia_invalida: 'Competência inválida', linha_incompleta: 'Linha incompleta',
+    nome_repetido: 'Nome repetido na competência', conflito_entre_planilhas: 'Conflito entre planilhas',
     lancamento_repetido: 'Lançamento repetido', cabecalho_ausente: 'Cabeçalho não achado', coluna_ausente: 'Coluna ausente',
     empresa_ausente: 'Empresa vazia', nome_e_cargo_no_mesmo_trecho: 'PDF: nome e cargo juntos', codigo_sem_nome: 'PDF: código sem nome',
     nome_parcial_ambiguo: 'PDF: nome parcial ambíguo'
@@ -164,17 +182,25 @@
     const cruzados = [];
     r.casamento.forEach(c => { if (c.tipo === 'exato') cruzados.push(c); });
     const pend = r.pendencias.slice().sort((a, b) => (b.bloqueia ? 1 : 0) - (a.bloqueia ? 1 : 0));
+    const conflitos = pend.filter(p => p.tipo === 'conflito_entre_planilhas');
     const bloqueios = pend.filter(p => p.bloqueia).length;
-    const naoBloqueiam = pend.length - bloqueios;
+    // coluna ausente é aviso (não tira empregado nem linha do arquivo); o resto que não bloqueia fica de fora
+    const avisos = pend.filter(p => p.tipo === 'coluna_ausente').length;
+    const foraDoArquivo = pend.filter(p => !p.bloqueia && p.tipo !== 'coluna_ausente').length;
+    const linhasLidas = r.planilhas.reduce((n, p) => n + p.linhasLidas, 0);
 
     const banner = $('banner');
     if (r.bloqueado) {
       const sem = r.semCodigo.length ? ' Rubrica sem código usada nos dados: ' + r.semCodigo.join(', ') + '.' : '';
+      const con = conflitos.length ? ' Conflitos entre planilhas: ' + conflitos.length + '.' : '';
       banner.className = 'banner bad';
-      banner.textContent = 'Arquivo não gerado: ' + bloqueios + ' pendência(s) bloqueiam a geração.' + sem;
-    } else if (naoBloqueiam) {
+      banner.textContent = 'Arquivo não gerado: ' + bloqueios + ' pendência(s) bloqueiam a geração.' + sem + con;
+    } else if (foraDoArquivo) {
       banner.className = 'banner warn';
-      banner.textContent = 'Arquivo pronto: ' + r.totais.linhas + ' linha(s) para ' + r.totais.empregados + ' empregado(s). ' + naoBloqueiam + ' pendência(s) ficaram de fora; confira abaixo.';
+      banner.textContent = 'Arquivo pronto: ' + r.totais.linhas + ' linha(s) para ' + r.totais.empregados + ' empregado(s). ' + foraDoArquivo + ' pendência(s) ficaram de fora; confira abaixo.';
+    } else if (avisos) {
+      banner.className = 'banner warn';
+      banner.textContent = 'Arquivo pronto: ' + r.totais.linhas + ' linha(s) para ' + r.totais.empregados + ' empregado(s). ' + avisos + ' aviso(s) de coluna ausente; confira abaixo.';
     } else {
       banner.className = 'banner good';
       banner.textContent = 'Arquivo pronto: ' + r.totais.linhas + ' linha(s) para ' + r.totais.empregados + ' empregado(s), sem pendências.';
@@ -185,13 +211,33 @@
     $('resumo-cruzados').textContent = 'Empregados cruzados: ' + cruzados.length + ' de ' + r.casamento.size + ' nome(s) da planilha.';
     $('resumo-pendencias').textContent = 'Pendências: ' + semCodigo + ' sem código, ' + ambiguos + ' ambíguo(s), ' + (pend.length - semCodigo - ambiguos) + ' outra(s).';
     $('resumo-linhas').textContent = 'Linhas geradas: ' + r.totais.linhas + '.';
+    $('resumo-total').textContent = 'Total geral: ' + linhasLidas + ' linha(s) lida(s) nas planilhas, ' + r.totalEmpregados + ' empregado(s).';
+    $('resumo-duplicatas').textContent = 'Duplicatas iguais removidas: ' + r.duplicatasRemovidas + '.';
     $('n-cruzados').textContent = '(' + cruzados.length + ')';
     $('n-pendencias').textContent = '(' + pend.length + ')';
+
+    // um bloco por planilha: arquivo, aba usada, linhas, empregados e as colunas que faltaram (aviso amarelo)
+    const blocos = $('blocos-planilhas');
+    clear(blocos);
+    r.planilhas.forEach(p => {
+      const bloco = el('div', 'bloco-planilha');
+      bloco.append(el('h3', null, p.rotulo + ': ' + p.arquivo));
+      bloco.append(el('p', 'hint', 'Aba lida: "' + p.aba + '". Linhas lidas: ' + p.linhasLidas + '. Empregados: ' + p.empregados + '.'));
+      if (p.colunasAusentes.length) {
+        bloco.append(el('p', 'banner warn', 'Aviso (não bloqueia): coluna(s) ausente(s) nesta planilha: ' + p.colunasAusentes.join(', ') + '. Essas rubricas ficam sem valor desta planilha; confira se era para ter.'));
+      }
+      blocos.append(bloco);
+    });
+
+    $('sec-conflitos').hidden = !conflitos.length;
+    tabela('t-conflitos', ['Empregado', 'Diferença entre as planilhas'],
+      conflitos.map(c => [c.nome || '', c.detalhe || '']));
 
     tabela('t-cruzados', ['Nome na planilha', 'Código na Domínio', 'Conferência'],
       cruzados.map(c => [c.nome, c.codigo, c.parcial ? 'nome parcial, conferir' : '']));
     tabela('t-pendencias', ['Situação', 'Nome', 'Linha', 'Detalhe'],
-      pend.length ? pend.map(p => [(p.bloqueia ? 'Bloqueia: ' : '') + (ROTULOS[p.tipo] || p.tipo), p.nome || '', p.linha || '', p.detalhe || '']) : [['Nenhuma pendência.', '', '', '']]);
+      pend.length ? pend.map(p => [(p.bloqueia ? 'Bloqueia: ' : '') + (ROTULOS[p.tipo] || p.tipo), p.nome || '', p.linha || '',
+        (p.planilha ? '[' + p.planilha + '] ' : '') + (p.detalhe || '')]) : [['Nenhuma pendência.', '', '', '']]);
     tabela('t-totais', ['Rubrica', 'Lançamento', 'Linhas', 'Total'],
       r.totais.porRubrica.map(t => [t.rubrica, t.descricao, String(t.linhas), t.unidade === 'horas' ? Core.fmtHorasHM(t.total) : Core.fmtReais(t.total)]),
       [0, 2, 3]);
@@ -217,7 +263,8 @@
   // ---------- inicialização ----------
   window.pdfjsLib.GlobalWorkerOptions.workerSrc = '../ponto-dominio/vendor/pdf.worker.min.js';
   montarRubricas();
-  setupDrop('drop-xlsx', 'file-xlsx', f => carregar(f, 'xlsx'));
+  setupDrop('drop-xlsx', 'file-xlsx', f => carregar(f, 'dec'));
+  setupDrop('drop-ferias', 'file-ferias', f => carregar(f, 'ferias'));
   setupDrop('drop-pdf', 'file-pdf', f => carregar(f, 'pdf'));
   $('empresa').addEventListener('input', invalidar);
   $('formato-data').addEventListener('change', invalidar);

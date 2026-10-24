@@ -31,7 +31,7 @@
     lancamentos.forEach(l => {
       const k = normalizarNome(l.nome);
       if (!grupos.has(k)) grupos.set(k, { nome: texto(l.nome), matriculas: new Set() });
-      grupos.get(k).matriculas.add(texto(l.matricula));
+      if (texto(l.matricula) !== '') grupos.get(k).matriculas.add(texto(l.matricula)); // matrícula em branco não conta (planilha de férias)
     });
     const res = new Map();
     grupos.forEach((g, k) => {
@@ -240,33 +240,45 @@
   function formatarData(mm, aaaa) { const s = CFG.FORMATO_DATA.separador; return CFG.FORMATO_DATA.dia + s + mm + s + aaaa; }
 
   // ---------- planilha de apuração (SheetJS, por cabeçalho) ----------
-  // Procura a linha de cabeçalho em todas as abas. Retorna { linhas, pendencias }.
+  // Aba: a que se chama "Lançamentos por competência" ou "Por competência"; sem nenhuma delas, a primeira.
+  // As outras abas (Totais, Critérios, Complementação etc.) não são lidas.
+  function escolherAba(wb) {
+    const aceitas = CFG.ABAS_ACEITAS.map(normalizarNome);
+    return wb.SheetNames.find(n => aceitas.includes(normalizarNome(n))) || wb.SheetNames[0];
+  }
+
+  // Lê a aba escolhida e acha a linha de cabeçalho. Retorna { linhas, pendencias, avisos, aba, colunasAusentes }.
   // linhas: [{ linha, matricula, nome, mm, aaaa, valores: [{ coluna, valor, bruto }] }]
   // valor: inteiro (7431 ou 40000), 0, negativo, ou null quando a célula não é lida (aí há pendência).
+  // Matrícula é opcional. Coluna de rubrica ausente vira aviso (avisos), não bloqueio: o relatório lista quais.
   function lerLancamentos(XLSX, wb) {
-    const pendencias = [], linhas = [];
+    const pendencias = [], avisos = [], linhas = [];
     const P = CFG.CABECALHO_PLANILHA;
-    // a competência aceita "Competência MM/AAAA" e "Competência" (comparação sem acento e sem maiúsculas)
+    // a competência aceita "Competência MM/AAAA", "Competência (MM/AAAA)" e "Competência" (sem acento e sem maiúsculas)
     const compAceitas = [P.competencia].concat(P.competenciaAlternativas || []).map(normalizarNome);
     const empAceito = normalizarNome(P.empregado);
-    let aba = null, grade = null, cab = null;
-    for (const nome of wb.SheetNames) {
-      const g = XLSX.utils.sheet_to_json(wb.Sheets[nome], { header: 1, raw: true, defval: null });
-      const h = g.findIndex(r => { const n = r.map(normalizarNome); return n.includes(empAceito) && compAceitas.some(a => n.includes(a)); });
-      if (h >= 0) { aba = nome; grade = g; cab = { linha: h, nomes: g[h].map(normalizarNome) }; break; }
+    const aba = escolherAba(wb);
+    const grade = XLSX.utils.sheet_to_json(wb.Sheets[aba], { header: 1, raw: true, defval: null });
+    const h = grade.findIndex(r => { const n = r.map(normalizarNome); return n.includes(empAceito) && compAceitas.some(a => n.includes(a)); });
+    if (h < 0) {
+      pendencias.push({ tipo: 'cabecalho_ausente', bloqueia: true, detalhe: 'Não achei a linha com "Empregado" e "Competência" na aba "' + aba + '".' });
+      return { linhas, pendencias, avisos, aba, colunasAusentes: [] };
     }
-    if (!cab) {
-      pendencias.push({ tipo: 'cabecalho_ausente', bloqueia: true, detalhe: 'Não achei a linha com "Empregado" e "Competência" na planilha.' });
-      return { linhas, pendencias };
+    const cab = { linha: h, nomes: grade[h].map(normalizarNome) };
+    // primeira coluna que bater com um dos nomes (o principal e as alternativas)
+    const colunaDe = nomes => {
+      for (const n of nomes) { const i = cab.nomes.indexOf(normalizarNome(n)); if (i >= 0) return i; }
+      return -1;
+    };
+    const iMat = colunaDe([P.matricula]), iEmp = colunaDe([P.empregado]), iComp = colunaDe(compAceitas);
+    const colunas = CFG.COLUNAS.map(c => ({ c, i: colunaDe([c.cabecalho].concat(c.alternativas || [])) }));
+    const ausentes = colunas.filter(x => x.i < 0).map(x => x.c.descricao);
+    if (ausentes.length) {
+      avisos.push({ tipo: 'coluna_ausente', bloqueia: false, colunas: ausentes,
+        detalhe: 'Coluna(s) sem cabeçalho nesta planilha: ' + ausentes.join(', ') + '. Essas rubricas ficam sem valor vindo desta planilha; confira se era para ter.' });
     }
-    const col = nome => cab.nomes.indexOf(normalizarNome(nome));
-    const iMat = col(P.matricula), iEmp = col(P.empregado), iComp = compAceitas.map(a => cab.nomes.indexOf(a)).find(i => i >= 0);
-    if (iMat < 0) pendencias.push({ tipo: 'coluna_ausente', bloqueia: true, detalhe: 'Coluna "' + P.matricula + '" não encontrada.' });
-    const colunas = CFG.COLUNAS.map(c => ({ c, i: col(c.cabecalho) }));
-    colunas.forEach(({ c, i }) => {
-      if (i < 0) pendencias.push({ tipo: 'coluna_ausente', bloqueia: true, detalhe: 'Coluna "' + c.cabecalho + '" não encontrada. Sem ela, esses valores não entram no arquivo.' });
-    });
-    const sheetRange = XLSX.utils.decode_range(aba ? wb.Sheets[aba]['!ref'] : 'A1');
+    const sheetRange = XLSX.utils.decode_range(wb.Sheets[aba]['!ref'] || 'A1');
+    const nomesComCompetencia = new Map(); // só para linhas sem matrícula: nome + competência -> linha da primeira
     for (let r = cab.linha + 1; r < grade.length; r++) {
       const lin = grade[r];
       const at = i => (i < 0 ? null : lin[i]);
@@ -276,7 +288,14 @@
       if (todos.every(x => texto(x) === '')) continue;      // linha em branco
       const competencia = lerCompetencia(comp);
       if (!competencia) { pendencias.push({ tipo: 'competencia_invalida', bloqueia: true, linha: numLinha, nome, detalhe: 'Competência "' + texto(comp) + '" não está no formato MM/AAAA.' }); continue; }
-      if (nome === '' || matricula === '') { pendencias.push({ tipo: 'linha_incompleta', bloqueia: true, linha: numLinha, nome, detalhe: 'Linha sem matrícula ou sem nome do empregado.' }); continue; }
+      if (nome === '') { pendencias.push({ tipo: 'linha_incompleta', bloqueia: true, linha: numLinha, nome, detalhe: 'Linha sem nome do empregado.' }); continue; }
+      if (matricula === '') {
+        // sem matrícula não dá para separar dois empregados com o mesmo nome: nome repetido na mesma competência bloqueia
+        const chave = normalizarNome(nome) + '|' + competencia.mm + '/' + competencia.aaaa;
+        if (nomesComCompetencia.has(chave)) {
+          pendencias.push({ tipo: 'nome_repetido', bloqueia: true, linha: numLinha, nome, detalhe: 'Mesmo nome e competência já aparecem na linha ' + nomesComCompetencia.get(chave) + ', e a planilha não tem matrícula para separar. Confira qual é o empregado.' });
+        } else nomesComCompetencia.set(chave, numLinha);
+      }
       const valores = colunas.map(({ c, i }) => {
         const bruto = at(i);
         const valor = c.tipo === 'horas' ? horasHM(bruto) : centavosDeReais(bruto);
@@ -287,7 +306,45 @@
       });
       linhas.push({ linha: numLinha, matricula, nome, mm: competencia.mm, aaaa: competencia.aaaa, valores });
     }
-    return { linhas, pendencias };
+    return { linhas, pendencias, avisos, aba, colunasAusentes: ausentes };
+  }
+
+  // ---------- junção de uma ou duas planilhas ----------
+  // planilhas: [{ rotulo, wb }] (1 ou 2; o rótulo aparece no relatório e nas pendências, ex.: "13º", "férias").
+  // Chave de cada valor: empregado (nome normalizado) + competência + rubrica (a coluna da config).
+  // Mesma chave e mesmo valor nas duas planilhas: entra uma vez e conta em duplicatasRemovidas (só valores maiores que zero,
+  // que virariam linha no TXT). Mesma chave com valor diferente: bloqueia e lista a diferença.
+  // Retorna { linhas, relatorio: [{ rotulo, aba, linhasLidas, empregados, colunasAusentes }], pendencias, duplicatasRemovidas }.
+  // linhas tem o formato de lerLancamentos e vai direto para gerarTxt.
+  function unirPlanilhas(XLSX, planilhas) {
+    if (!planilhas || planilhas.length < 1 || planilhas.length > 2) throw new Error('Informe uma ou duas planilhas de apuração.');
+    const relatorio = [], pendencias = [], linhas = [], vistos = new Map();
+    let duplicatasRemovidas = 0;
+    const fmt = (coluna, valor) => (coluna.tipo === 'horas' ? fmtHorasHM(minutosDeHM(valor)) : fmtReais(valor));
+    planilhas.forEach((p, idx) => {
+      const lido = lerLancamentos(XLSX, p.wb);
+      relatorio.push({
+        rotulo: p.rotulo, aba: lido.aba, linhasLidas: lido.linhas.length,
+        empregados: new Set(lido.linhas.map(l => normalizarNome(l.nome))).size, colunasAusentes: lido.colunasAusentes
+      });
+      lido.pendencias.concat(lido.avisos).forEach(x => pendencias.push(Object.assign({ planilha: p.rotulo }, x)));
+      lido.linhas.forEach(l => {
+        const valores = [];
+        l.valores.forEach(v => {
+          const chave = normalizarNome(l.nome) + '|' + l.mm + '/' + l.aaaa + '|' + v.coluna.descricao;
+          const valor = v.valor === null ? 0 : v.valor;
+          const antes = vistos.get(chave);
+          if (!antes) { vistos.set(chave, { idx, valor, v, planilha: p.rotulo }); valores.push(v); return; }
+          if (antes.idx === idx) { valores.push(v); return; } // repetição na mesma planilha: gerarTxt bloqueia
+          if (antes.valor === valor) { if (valor > 0) duplicatasRemovidas++; return; }
+          pendencias.push({ tipo: 'conflito_entre_planilhas', bloqueia: true, linha: l.linha, nome: l.nome, planilha: p.rotulo,
+            detalhe: 'Empregado ' + l.nome + ', competência ' + l.mm + '/' + l.aaaa + ', "' + v.coluna.descricao + '": ' +
+              antes.planilha + ' = ' + fmt(v.coluna, antes.valor) + ', ' + p.rotulo + ' = ' + fmt(v.coluna, valor) + '. Confira qual está certo antes de gerar.' });
+        });
+        linhas.push(Object.assign({}, l, { valores }));
+      });
+    });
+    return { linhas, relatorio, pendencias, duplicatasRemovidas };
   }
 
   // ---------- arquivo de importação ----------
@@ -352,7 +409,7 @@
   const api = {
     normalizarNome, casarEmpregados, agruparLinhas, extrairEmpregadosDeItens, lerRelacaoPdf,
     centavosDeReais, horasHM, minutosDeHM, fmtReais, fmtHorasHM, lerCompetencia, formatarData,
-    lerLancamentos, gerarTxt
+    lerLancamentos, unirPlanilhas, gerarTxt
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.MediasCore = api;
 })(typeof window !== 'undefined' ? window : this);
