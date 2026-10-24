@@ -4,6 +4,7 @@
 // Nomes, matrículas e valores inventados. Não é dado real. Usado por test/medias-dominio.js.
 const path = require('path');
 const XLSX = require(path.join(__dirname, '..', '..', 'ponto-dominio', 'vendor', 'xlsx.full.min.js'));
+const { pdfSintetico } = require('./medias-amostra.js');
 
 const AVISO = 'AMOSTRA SINTÉTICA: não é dado real';
 
@@ -54,9 +55,29 @@ const ITENS_PARCIAL = [
   { s: 'AUXILIAR', x: 300, y: 680, w: 50 }
 ];
 
+// ---- Tela (SYN-197): sem digitar a empresa, o arquivo sai com a empresa de fábrica (316) ----
+const TXT_SOMA_EMPRESA_316 = ['316;201;01/09/2026;250;2000', '316;202;01/09/2026;250;500'];
+
+// Relação de Empregados sintética da tela: Teste Soma Um (201), Teste Soma Dois (202), Teste Repetido (203).
+const RELACAO_PADROES = [
+  { codigo: '201', nome: 'TESTE SOMA UM', cargo: 'AUXILIAR' },
+  { codigo: '202', nome: 'TESTE SOMA DOIS', cargo: 'AUXILIAR' },
+  { codigo: '203', nome: 'TESTE REPETIDO', cargo: 'AUXILIAR' }
+];
+
+function gerarRelacaoPadroes() {
+  const itens = [{ s: 'Relação de Empregados (AMOSTRA SINTÉTICA)', x: 40, y: 760 },
+    { s: 'Código', x: 40, y: 720 }, { s: 'Nome', x: 120, y: 720 }, { s: 'Cargo', x: 330, y: 720 }];
+  RELACAO_PADROES.forEach((e, i) => {
+    const y = 700 - i * 20;
+    itens.push({ s: e.codigo, x: 40, y }, { s: e.nome, x: 120, y }, { s: e.cargo, x: 330, y });
+  });
+  return pdfSintetico(itens);
+}
+
 module.exports = {
   gerarPlanilha, CABECALHO,
-  LINHAS_SOMA, TXT_SOMA,
+  LINHAS_SOMA, TXT_SOMA, TXT_SOMA_EMPRESA_316, gerarRelacaoPadroes,
   LINHAS_REPETIDA,
   NOME_UM, NOME_DOIS, COMPETENCIAS_8, LINHAS_PARCIAL_8, LINHAS_PARCIAL_DOIS,
   ITENS_PARCIAL

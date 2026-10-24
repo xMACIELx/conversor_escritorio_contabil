@@ -3,7 +3,6 @@
 
   const $ = id => document.getElementById(id);
   const CFG = window.MediasConfig, Core = window.MediasCore;
-  const NOME_ARQUIVO = 'lancar_medias.txt';
 
   // dec (13º) e ferias: { buf, nome } ou null. pdfBuf: a Relação de Empregados.
   const state = { dec: null, ferias: null, pdfBuf: null, res: null };
@@ -137,6 +136,7 @@
       const pendencias = uniao.pendencias.concat(rel.pendencias.map(p => Object.assign({ bloqueia: false }, p)));
       const res = Core.gerarTxt({ empresa: $('empresa').value, lancamentos: uniao.linhas, pendencias, casamento });
       state.res = Object.assign(res, {
+        empresa: $('empresa').value.trim(),
         casamento,
         semCodigo: colunasSemCodigo(uniao.linhas),
         planilhas: uniao.relatorio.map((r, i) => Object.assign({ arquivo: planilhas[i].arquivo }, r)),
@@ -213,6 +213,7 @@
     $('resumo-linhas').textContent = 'Linhas geradas: ' + r.totais.linhas + '.';
     $('resumo-total').textContent = 'Total geral: ' + linhasLidas + ' linha(s) lida(s) nas planilhas, ' + r.totalEmpregados + ' empregado(s).';
     $('resumo-duplicatas').textContent = 'Duplicatas iguais removidas: ' + r.duplicatasRemovidas + '.';
+    $('resumo-somadas').textContent = 'Linhas somadas: ' + r.totais.linhasSomadas + ' (mesma rubrica repetida no mesmo empregado e competência, numa linha só).';
     $('n-cruzados').textContent = '(' + cruzados.length + ')';
     $('n-pendencias').textContent = '(' + pend.length + ')';
 
@@ -243,17 +244,20 @@
       [0, 2, 3]);
 
     $('sec-arquivo').hidden = r.bloqueado;
+    $('baixar').disabled = r.bloqueado;
     $('txt-previa').value = r.texto;
     $('resultado').hidden = false;
     $('resultado').scrollIntoView({ block: 'start' });
   }
 
+  // O texto já sai com CRLF do core (CFG.FIM_DE_LINHA); o Blob de string não acrescenta BOM.
   function baixar() {
+    if (!state.res || state.res.bloqueado) return;
     const blob = new Blob([state.res.texto], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = el('a');
     a.href = url;
-    a.download = NOME_ARQUIVO;
+    a.download = 'lancar_medias_' + state.res.empresa + '.txt';
     document.body.append(a);
     a.click();
     a.remove();
@@ -262,6 +266,7 @@
 
   // ---------- inicialização ----------
   window.pdfjsLib.GlobalWorkerOptions.workerSrc = '../ponto-dominio/vendor/pdf.worker.min.js';
+  $('empresa').value = CFG.EMPRESA_PADRAO;
   montarRubricas();
   setupDrop('drop-xlsx', 'file-xlsx', f => carregar(f, 'dec'));
   setupDrop('drop-ferias', 'file-ferias', f => carregar(f, 'ferias'));
