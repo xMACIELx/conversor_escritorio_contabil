@@ -5,6 +5,7 @@ const path = require('path');
 
 const DIR = path.join(__dirname, '..', 'medias-dominio');
 const Core = require(path.join(DIR, 'core.js'));
+const CFG_DATA = require(path.join(DIR, 'config.js')).FORMATO_DATA;
 const XLSX = require(path.join(DIR, '..', 'ponto-dominio', 'vendor', 'xlsx.full.min.js'));
 
 // Relação de Empregados sintética (código e nome, como o PDF da Domínio entregaria)
@@ -115,6 +116,14 @@ module.exports = async function run(check) {
   check('competência fora de MM/AAAA vira pendência e a linha não entra', compRuim.linhas.length === 0 && compRuim.pendencias.some(p => p.tipo === 'competencia_invalida'));
   const valRuim = Core.lerLancamentos(XLSX, pasta(planilha([lin('001', 'Maria da Silva', '09/2026', { 'Prêmio (R$)': 'R$ 4a' })])));
   check('valor que não se lê bloqueia com pendência', valRuim.pendencias.some(p => p.tipo === 'valor_invalido' && p.bloqueia));
+
+  console.log('\nMédias → Domínio: formato da data');
+  const sepOriginal = CFG_DATA.separador;
+  CFG_DATA.separador = '-';
+  const comHifen = Core.formatarData('09', '2026');
+  CFG_DATA.separador = sepOriginal;
+  check('separador de data vale para dia, mês e ano (01-09-2026)', comHifen === '01-09-2026', comHifen);
+  check('formato padrão é 01/MM/AAAA', Core.formatarData('09', '2026') === '01/09/2026');
 
   console.log('\nMédias → Domínio: arquivo de importação (TXT)');
   const r = gerar(BASE);

@@ -28,6 +28,15 @@
       para: 'Lista de inconsistências',
       caminho: 'conferencia-ncm-cst/',
       status: 'pronto'
+    },
+    {
+      id: 'medias-dominio',
+      nome: 'Médias → Domínio',
+      descricao: 'Lê a planilha de apuração das médias e a Relação de Empregados (PDF) da Domínio e gera o .txt de lançamento de médias por rubrica.',
+      de: 'Planilha (.xlsx) + Relação (PDF)',
+      para: 'Domínio (.txt)',
+      caminho: 'medias-dominio/',
+      status: 'pronto'
     }
   ];
 

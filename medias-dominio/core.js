@@ -173,7 +173,7 @@
     return mm < 1 || mm > 12 ? null : { mm: pad2(mm), aaaa: m[2] };
   }
 
-  function formatarData(mm, aaaa) { return CFG.FORMATO_DATA.dia + CFG.FORMATO_DATA.separador + mm + '/' + aaaa; }
+  function formatarData(mm, aaaa) { const s = CFG.FORMATO_DATA.separador; return CFG.FORMATO_DATA.dia + s + mm + s + aaaa; }
 
   // ---------- planilha de apuração (SheetJS, por cabeçalho) ----------
   // Procura a linha de cabeçalho em todas as abas. Retorna { linhas, pendencias }.

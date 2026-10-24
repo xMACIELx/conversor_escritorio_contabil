@@ -1,0 +1,59 @@
+/* Estilos específicos da ferramenta Médias → Domínio (mesmo padrão visual das outras ferramentas) */
+
+.step { margin-top: 30px; }
+h2 { font-size: 1.1rem; margin: 0 0 12px; display: flex; align-items: center; gap: 10px; }
+h2 b {
+  display: inline-grid; place-items: center; width: 26px; height: 26px;
+  background: var(--ink); color: var(--paper); border-radius: 50%; font-size: .85rem; flex: none;
+}
+h3 { margin: 18px 0 6px; font-size: .95rem; font-weight: 600; }
+.hint { color: var(--muted); font-size: .9rem; margin: 4px 0 8px; }
+.note { color: var(--muted); font-size: .92rem; }
+
+.campos { display: flex; flex-wrap: wrap; gap: 18px; }
+.campo { display: flex; flex-direction: column; gap: 6px; font-weight: 600; font-size: .92rem; min-width: 220px; }
+input[type="text"], select {
+  font: inherit; padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--ink);
+}
+input.invalid { border-color: var(--err); background: var(--err-bg); }
+
+.uploads { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+.drop {
+  display: block; text-align: center; cursor: pointer;
+  background: var(--card); border: 2px dashed var(--line); border-radius: 12px;
+  padding: 28px 18px; transition: border-color .15s, background .15s;
+}
+.drop:hover, .drop:focus-visible, .drop.over { border-color: var(--accent); background: #f0f6f2; outline: none; }
+.drop.loaded { border-style: solid; border-color: var(--ok); background: var(--ok-bg); }
+.drop-title { display: block; font-size: .85rem; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
+.drop-main { display: block; font-size: 1.05rem; font-weight: 600; word-break: break-all; margin-top: 4px; }
+.drop-sub { display: block; color: var(--muted); font-size: .9rem; margin-top: 2px; }
+
+.banner { padding: 12px 16px; border-radius: 10px; font-weight: 600; margin: 12px 0; border-left: 6px solid; }
+.banner.good { background: var(--ok-bg); color: var(--ok); border-color: var(--ok); }
+.banner.warn { background: #fff4d6; color: #7a5600; border-color: #d9a400; }
+.banner.bad { background: var(--err-bg); color: var(--err); border-color: var(--err); }
+
+.checks { list-style: none; margin: 0; padding: 0; background: var(--card); border: 1px solid var(--line); border-radius: 10px; }
+.checks li { display: flex; gap: 12px; padding: 9px 14px; border-top: 1px solid var(--line); }
+.checks li:first-child { border-top: 0; }
+.checks .mark {
+  flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center;
+  font-size: .8rem; font-weight: 700; color: #fff; margin-top: 2px; background: var(--info);
+  font-style: italic; font-family: Georgia, serif;
+}
+
+table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--line); font-size: .9rem; }
+th, td { padding: 5px 10px; border-top: 1px solid var(--line); text-align: left; vertical-align: top; }
+th { background: #efe9d9; font-weight: 600; position: sticky; top: 0; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+td input[type="text"] { width: 110px; }
+.scroll { max-height: 420px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
+.scroll table { border: 0; }
+
+.actions { margin: 18px 0 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+textarea.copy {
+  width: 100%; min-height: 160px; font: 12.5px/1.5 Consolas, "Courier New", monospace;
+  padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: #fff;
+}
