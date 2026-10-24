@@ -7,6 +7,8 @@ const DIR = path.join(__dirname, '..', 'medias-dominio');
 const Core = require(path.join(DIR, 'core.js'));
 const CFG_DATA = require(path.join(DIR, 'config.js')).FORMATO_DATA;
 const XLSX = require(path.join(DIR, '..', 'ponto-dominio', 'vendor', 'xlsx.full.min.js'));
+// Amostras sintéticas do formato real (SYN-166), as mesmas que o smoke usa
+const GEN = require(path.join(__dirname, '..', 'tests', 'smoke', 'medias-amostra.js'));
 
 // Relação de Empregados sintética (código e nome, como o PDF da Domínio entregaria)
 const LISTA = [
@@ -148,4 +150,68 @@ module.exports = async function run(check) {
   check('mesma rubrica e competência duas vezes: bloqueia', dup.bloqueado && dup.pendencias.some(p => p.tipo === 'lancamento_repetido'));
   const semEmp = gerar(BASE, { empresa: '' });
   check('sem código da empresa: bloqueia', semEmp.bloqueado && semEmp.pendencias.some(p => p.tipo === 'empresa_ausente'));
+
+  // ---- Formato real (SYN-166): cada defeito tem o seu caso; se o defeito voltar, o caso falha ----
+  // Um erro de leitura (ex.: cabeçalho não achado) vira resultado vazio, para a checagem falhar em vez de travar o runner.
+  const seguro = (fn, nulo) => { try { return fn(); } catch (e) { return nulo; } };
+  const SEM = { empregados: [], pendencias: [] };
+
+  console.log('\nMédias → Domínio: formato real, cabeçalho "Código Nome" num texto só');
+  const cabJunto = [{ s: 'Código Nome', x: 0, y: 700, w: 51 }, { s: 'Cargo', x: 160, y: 700, w: 30 }];
+  const extCab = seguro(() => Core.extrairEmpregadosDeItens([cabJunto.concat([
+    { s: '101', x: 0, y: 680, w: 15 }, { s: 'ADELSON DA COSTA', x: 32, y: 680, w: 100 }, { s: 'ENCARREGADO', x: 160, y: 680, w: 60 }])]), SEM);
+  check('cabeçalho "Código Nome" num texto só é achado (código 101 e nome lidos)', extCab.empregados.length === 1 && extCab.empregados[0].codigo === '101' &&
+    extCab.empregados[0].nome === 'ADELSON DA COSTA', JSON.stringify(extCab.empregados));
+
+  console.log('\nMédias → Domínio: formato real, código e nome no mesmo texto');
+  const extJunto = seguro(() => Core.extrairEmpregadosDeItens([cabJunto.concat([
+    { s: '941 ADELSON DA COSTA', x: 0, y: 680, w: 112 }, { s: 'ENCARREGADO', x: 160, y: 680, w: 60 }])]), SEM);
+  check('"941 ADELSON DA COSTA" num texto só vira código 941 e nome ADELSON DA COSTA', extJunto.empregados.length === 1 &&
+    extJunto.empregados[0].codigo === '941' && extJunto.empregados[0].nome === 'ADELSON DA COSTA', JSON.stringify(extJunto.empregados));
+
+  console.log('\nMédias → Domínio: formato real, planilha com cabeçalho "Competência"');
+  const compSemMes = Core.lerLancamentos(XLSX, XLSX.read(GEN.gerarPlanilhaCompetencia(), { type: 'buffer' }));
+  check('planilha com cabeçalho "Competência" (sem MM/AAAA) é lida: 11 linhas, competência 09/2026',
+    compSemMes.pendencias.length === 0 && compSemMes.linhas.length === 11 && compSemMes.linhas[0].mm === '09' && compSemMes.linhas[0].aaaa === '2026',
+    JSON.stringify(compSemMes.pendencias));
+  const cabCompSemAcento = CABECALHO.map(c => (c === 'Competência MM/AAAA' ? 'COMPETENCIA' : c));
+  const compCaixa = Core.lerLancamentos(XLSX, pasta(planilha([lin('001', 'Maria da Silva', '09/2026', { 'HE 50% (h:mm)': '1:00' })], cabCompSemAcento)));
+  check('"COMPETENCIA" (sem acento e em maiúsculas) também é aceito', compCaixa.linhas.length === 1 && !compCaixa.pendencias.some(p => p.tipo === 'cabecalho_ausente'));
+
+  console.log('\nMédias → Domínio: formato real, nome que avança sobre o cargo (prefixo de palavras)');
+  const nomesPlanilha = GEN.PLANILHA_COMPETENCIA.map(p => p[1]);
+  const extReal = seguro(() => Core.extrairEmpregadosDeItens([GEN.ITENS_FORMATO_REAL], nomesPlanilha), SEM);
+  const lidosReal = extReal.empregados.length;
+  check('PDF sintético: lê todos os empregados da Relação (10 de 10)', lidosReal === GEN.FORMATO_REAL.empregadosNoPdf, String(lidosReal));
+  const nomeDe = cod => (extReal.empregados.find(e => e.codigo === cod) || {}).nome;
+  check('nome que avança sobre o cargo vira o nome da planilha (301: "Marcos Antonio Pereira da Costa")', nomeDe('301') === 'Marcos Antonio Pereira da Costa', String(nomeDe('301')));
+  check('nome partido em dois textos ("FRANCIELE FERREIRA DA" + "SILVA OPERADOR") vira "Franciele Ferreira da Silva"', nomeDe('304') === 'Franciele Ferreira da Silva', String(nomeDe('304')));
+  check('prefixo mais longo: "ANA PAULA LIMA MONITORA DE CAIXA" fica com "Ana Paula Lima", não com "Ana Paula"', nomeDe('308') === 'Ana Paula Lima', String(nomeDe('308')));
+  check('nenhuma linha do formato real fica como "nome e cargo juntos"', !extReal.pendencias.some(p => p.tipo === 'nome_e_cargo_no_mesmo_trecho'), JSON.stringify(extReal.pendencias));
+  const semNomesPlanilha = seguro(() => Core.extrairEmpregadosDeItens([GEN.ITENS_FORMATO_REAL], ['Outra Pessoa']), SEM);
+  check('sem nome da planilha que case, a linha que avança sobre o cargo continua pendência (sem chute)',
+    semNomesPlanilha.pendencias.some(p => p.tipo === 'nome_e_cargo_no_mesmo_trecho' && p.codigo === '301') && !semNomesPlanilha.empregados.some(e => e.codigo === '301'));
+
+  // Cruzamento com a planilha sintética do formato real
+  const lidoReal = Core.lerLancamentos(XLSX, XLSX.read(GEN.gerarPlanilhaCompetencia(), { type: 'buffer' }));
+  const casReal = Core.casarEmpregados(lidoReal.linhas, extReal.empregados);
+  const tipoDe = nome => (casReal.get(Core.normalizarNome(nome)) || {}).tipo;
+  const cruzados = Array.from(casReal.values()).filter(c => c.tipo === 'exato').length;
+  const ambiguos = Array.from(casReal.values()).filter(c => c.tipo === 'ambiguo').map(c => c.nome);
+  const semPar = Array.from(casReal.values()).filter(c => c.tipo === 'sem_par').map(c => c.nome);
+  check('cruzaram com a planilha: 8 de 11 nomes', cruzados === GEN.FORMATO_REAL.cruzados && casReal.size === GEN.FORMATO_REAL.nomesPlanilha,
+    cruzados + ' de ' + casReal.size);
+  check('pendência ambígua: "Joao Pedro" tem dois empregados (309 e 310), sem código', tipoDe('Joao Pedro') === 'ambiguo' &&
+    casReal.get('JOAO PEDRO').candidatos.join() === '309,310' && !('codigo' in casReal.get('JOAO PEDRO')), JSON.stringify(ambiguos));
+  check('pendência sem par: só "Ana Paula" e "Carla Mendes"', semPar.length === 2 && semPar.includes('Ana Paula') && semPar.includes('Carla Mendes'), JSON.stringify(semPar));
+  const txtReal = Core.gerarTxt({ empresa: '7', lancamentos: lidoReal.linhas, pendencias: lidoReal.pendencias, casamento: casReal });
+  check('arquivo do formato real: uma linha por empregado cruzado, sem o ambíguo nem o sem par',
+    JSON.stringify(txtReal.linhas) === JSON.stringify(GEN.FORMATO_REAL.txtLinhas) && txtReal.bloqueado === false, JSON.stringify(txtReal.linhas));
+  check('pendências do formato real são só sem par e ambíguo (não bloqueiam)',
+    txtReal.pendencias.length === 3 && txtReal.pendencias.every(p => (p.tipo === 'sem_par' || p.tipo === 'ambiguo') && !p.bloqueia));
+
+  console.log('\nMédias → Domínio: formato real, resumo da leitura sintética');
+  console.log('  PDF sintético: ' + lidosReal + ' empregado(s) lido(s) de ' + GEN.FORMATO_REAL.empregadosNoPdf + ' linha(s) de empregado');
+  console.log('  cruzaram com a planilha sintética: ' + cruzados + ' de ' + casReal.size + ' nome(s)');
+  console.log('  pendentes: sem par (' + semPar.join(', ') + '); ambíguo (' + ambiguos.join(', ') + ')');
 };
