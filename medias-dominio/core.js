@@ -128,7 +128,14 @@
   function extrairEmpregadosDeItens(paginas, nomesPlanilha) {
     const empregados = [], pendencias = [], vistos = new Set();
     const T = CFG.TOLERANCIA_X_PT;
-    const nomes = (nomesPlanilha || []).map(n => ({ original: texto(n), norm: normalizarNome(n) })).filter(n => n.norm !== '');
+    // Candidatos são nomes DISTINTOS (normalizados): o mesmo nome em várias competências da planilha conta uma vez.
+    const nomes = [], normsVistos = new Set();
+    (nomesPlanilha || []).forEach(n => {
+      const norm = normalizarNome(n);
+      if (norm === '' || normsVistos.has(norm)) return;
+      normsVistos.add(norm);
+      nomes.push({ original: texto(n), norm });
+    });
     const adicionar = (codigo, nome, pagina, parcial) => {
       const chave = codigo + '|' + normalizarNome(nome);
       if (vistos.has(chave)) return;
@@ -222,6 +229,10 @@
 
   // 7431 -> 4471 minutos (para somar horas sem o erro de base 60 do H,MM)
   function minutosDeHM(hm) { return Math.floor(hm / 100) * 60 + (hm % 100); }
+  // 4471 minutos -> 7431 (inverso de minutosDeHM)
+  function hmDeMinutos(min) { return Math.floor(min / 60) * 100 + (min % 60); }
+  // Soma duas leituras da mesma rubrica no formato da coluna: horas em minutos (H,MM não soma na base 100), valor em centavos
+  const somarValores = (coluna, a, b) => (coluna.tipo === 'horas' ? hmDeMinutos(minutosDeHM(a) + minutosDeHM(b)) : a + b);
 
   const fmtReais = c => {                    // 40000 -> "R$ 400,00"
     const neg = c < 0 ? '-' : '', a = Math.abs(c);
@@ -350,11 +361,15 @@
   // ---------- arquivo de importação ----------
   // Gera uma linha por empregado, competência e rubrica com valor maior que zero.
   // Sem cabeçalho, separador ';', empresa;codigo;01/MM/AAAA;rubrica;valor. Nunca gera placeholder.
+  // Duas colunas com a mesma rubrica para o mesmo empregado e competência (ex.: DSR HE e DSR outros, ambas 250)
+  // viram uma linha só, com a soma. A MESMA coluna duas vezes nesse caso é lançamento repetido e bloqueia: a soma
+  // não a esconde. totais.linhasSomadas conta quantos lançamentos foram somados numa linha que já existia.
   // opts: { empresa, lancamentos, pendencias (de lerLancamentos), casamento (de casarEmpregados) }
   // Retorna { linhas, texto, pendencias, totais, bloqueado }. Com bloqueado = true, não ofereça o arquivo.
   function gerarTxt(opts) {
     const pendencias = (opts.pendencias || []).slice();
-    const linhas = [], vistos = new Set(), porRubrica = new Map(), codigos = new Set();
+    const entradas = [], porChave = new Map(), porRubrica = new Map(), codigos = new Set();
+    let linhasSomadas = 0;
     const emp = digitos(opts.empresa);
     if (emp === '') pendencias.push({ tipo: 'empresa_ausente', bloqueia: true, detalhe: 'Informe o código da empresa na tela.' });
 
@@ -382,21 +397,33 @@
           return;
         }
         const chave = base + '|' + rub;
-        if (vistos.has(chave)) {
+        const existente = porChave.get(chave);
+        if (existente && existente.colunas.has(v.coluna.descricao)) {
           pendencias.push({ tipo: 'lancamento_repetido', bloqueia: true, linha: l.linha, nome: l.nome, detalhe: 'Rubrica ' + rub + ' repetida para este empregado e competência.' });
           return;
         }
-        vistos.add(chave);
-        linhas.push([emp, c.codigo, formatarData(l.mm, l.aaaa), rub, String(v.valor)].join(CFG.SEPARADOR_TXT));
-        codigos.add(c.codigo);
-        if (!porRubrica.has(rub)) porRubrica.set(rub, { rubrica: rub, descricao: v.coluna.descricao, unidade: v.coluna.tipo, linhas: 0, total: 0 });
-        const t = porRubrica.get(rub);
-        t.linhas++;
-        t.total += v.coluna.tipo === 'horas' ? minutosDeHM(v.valor) : v.valor;
+        if (existente) {
+          existente.valor = somarValores(v.coluna, existente.valor, v.valor);
+          existente.colunas.add(v.coluna.descricao);
+          linhasSomadas++;
+          return;
+        }
+        const nova = { codigo: c.codigo, data: formatarData(l.mm, l.aaaa), rub, coluna: v.coluna, valor: v.valor, colunas: new Set([v.coluna.descricao]) };
+        porChave.set(chave, nova);
+        entradas.push(nova);
       });
     });
 
-    const totais = { linhas: linhas.length, empregados: codigos.size, porRubrica: Array.from(porRubrica.values()) };
+    const linhas = entradas.map(e => [emp, e.codigo, e.data, e.rub, CFG.FORMATAR_VALOR_TXT(e.valor)].join(CFG.SEPARADOR_TXT));
+    entradas.forEach(e => {
+      codigos.add(e.codigo);
+      if (!porRubrica.has(e.rub)) porRubrica.set(e.rub, { rubrica: e.rub, descricao: e.coluna.descricao, unidade: e.coluna.tipo, linhas: 0, total: 0 });
+      const t = porRubrica.get(e.rub);
+      t.linhas++;
+      t.total += e.coluna.tipo === 'horas' ? minutosDeHM(e.valor) : e.valor;
+    });
+
+    const totais = { linhas: linhas.length, empregados: codigos.size, linhasSomadas, porRubrica: Array.from(porRubrica.values()) };
     return {
       linhas: linhas,
       texto: linhas.map(l => l + CFG.FIM_DE_LINHA).join(''),

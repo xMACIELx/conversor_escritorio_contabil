@@ -9,6 +9,7 @@ const path = require('path');
 const { gerarAmostraSped, ESPERADO } = require('./amostra-sped.js');
 const { gerarPlanilhaMedias, gerarRelacaoPdf, TXT_ESPERADO, gerarPlanilhaCompetencia, gerarRelacaoPdfFormatoReal, FORMATO_REAL } = require('./medias-amostra.js');
 const { gerarPlanilhaDecimoTerceiro, gerarPlanilhaFerias, gerarRelacaoDuasPlanilhas, TXT_DUAS_PLANILHAS, LINHAS_FERIAS } = require('./medias-ferias-amostra.js');
+const { gerarPlanilha: gerarPlanilhaPadroes, gerarRelacaoPadroes, LINHAS_SOMA, LINHAS_REPETIDA, TXT_SOMA_EMPRESA_316 } = require('./medias-padroes-amostra.js');
 
 const RAIZ = path.resolve(__dirname, '..', '..');
 const SAIDA = path.join(__dirname, 'out');
@@ -126,7 +127,7 @@ async function telaMedias(browser, base) {
   if (txt !== TXT_ESPERADO.join('\n') + '\n') throw falha('arquivo gerado diferente do esperado: ' + JSON.stringify(txt));
 
   const [baixado] = await Promise.all([page.waitForEvent('download'), page.click('#baixar')]);
-  if (baixado.suggestedFilename() !== 'lancar_medias.txt') throw falha('nome sugerido do arquivo: ' + baixado.suggestedFilename());
+  if (baixado.suggestedFilename() !== 'lancar_medias_7.txt') throw falha('nome sugerido do arquivo: ' + baixado.suggestedFilename());
 
   await page.screenshot({ path: path.join(SAIDA, 'medias-dominio.png'), fullPage: true });
 
@@ -251,6 +252,60 @@ async function telaMediasDuasPlanilhas(browser, base) {
   await page.close();
 }
 
+// Médias → Domínio com os padrões da Keli (SYN-197): abre com a empresa 316 e as 11 rubricas de fábrica; DSR HE e
+// DSR outros do mesmo empregado saem somados numa linha; o .txt baixado tem CRLF e não tem BOM. Depois, lançamento
+// repetido de verdade bloqueia e esconde o download.
+async function telaMediasPadroesKeli(browser, base) {
+  const XLSX_TIPO = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  const RUBRICAS_KELI = ['150', '240', '200', '25', '37', '243', '236', '250', '854', '250', '853'];
+  const page = await browser.newPage({ viewport: { width: 1280, height: 1000 } });
+  page.setDefaultTimeout(TIMEOUT_MS);
+  const checar = vigiar(page, 'Médias → Domínio (padrões da Keli)');
+  const texto = id => page.textContent(id).then(t => t.replace(/\s+/g, ' ').trim());
+
+  await page.goto(base + '/medias-dominio/', { waitUntil: 'load' });
+  await page.waitForSelector('#rub-0');
+  if ((await page.inputValue('#empresa')) !== '316') throw falha('padrões da Keli: empresa de fábrica diferente de 316');
+  const rubricas = await page.$$eval('#rubricas-corpo input', els => els.map(e => e.value));
+  if (rubricas.join(',') !== RUBRICAS_KELI.join(',')) throw falha('padrões da Keli: rubricas de fábrica erradas: ' + rubricas.join(','));
+
+  await page.setInputFiles('#file-xlsx', { name: 'apuracao-padroes-sintetica.xlsx', mimeType: XLSX_TIPO, buffer: gerarPlanilhaPadroes(LINHAS_SOMA) });
+  await page.setInputFiles('#file-pdf', { name: 'relacao-padroes-sintetica.pdf', mimeType: 'application/pdf', buffer: gerarRelacaoPadroes() });
+  await page.click('#gerar');
+  try {
+    await page.waitForSelector('#resultado:not([hidden])');
+  } catch (e) {
+    throw falha('padrões da Keli: o relatório não apareceu (aviso: ' + (await texto('#aviso')) + ')');
+  }
+
+  const esperado = [
+    [await texto('#banner'), 'Arquivo pronto: 2 linha(s) para 2 empregado(s)', 'banner'],
+    [await texto('#resumo-somadas'), 'Linhas somadas: 1', 'linhas somadas'],
+    [await texto('#t-totais'), 'R$ 25,00', 'total da rubrica 250']
+  ];
+  for (const [real, trecho, onde] of esperado) {
+    if (!real.includes(trecho)) throw falha('padrões da Keli: relatório inesperado em ' + onde + ': esperava "' + trecho + '", veio "' + real + '"');
+  }
+  const txt = (await page.inputValue('#txt-previa')).replace(/\r\n/g, '\n');
+  if (txt !== TXT_SOMA_EMPRESA_316.join('\n') + '\n') throw falha('padrões da Keli: arquivo gerado diferente do esperado: ' + JSON.stringify(txt));
+
+  const [baixado] = await Promise.all([page.waitForEvent('download'), page.click('#baixar')]);
+  if (baixado.suggestedFilename() !== 'lancar_medias_316.txt') throw falha('padrões da Keli: nome sugerido do arquivo: ' + baixado.suggestedFilename());
+  const bytes = fs.readFileSync(await baixado.path());
+  if (bytes.subarray(0, 3).equals(Buffer.from([0xef, 0xbb, 0xbf]))) throw falha('padrões da Keli: o arquivo baixado tem BOM');
+  const conteudo = bytes.toString('utf8');
+  if (conteudo !== TXT_SOMA_EMPRESA_316.join('\r\n') + '\r\n') throw falha('padrões da Keli: arquivo baixado diferente do esperado (CRLF): ' + JSON.stringify(conteudo));
+
+  // Lançamento repetido de verdade (a mesma coluna duas vezes) bloqueia: o download some.
+  await page.setInputFiles('#file-xlsx', { name: 'apuracao-repetida-sintetica.xlsx', mimeType: XLSX_TIPO, buffer: gerarPlanilhaPadroes(LINHAS_REPETIDA) });
+  await page.click('#gerar');
+  await page.waitForSelector('#banner.bad');
+  if (await page.isVisible('#baixar')) throw falha('padrões da Keli: o botão de baixar apareceu com lançamento repetido');
+
+  checar();
+  await page.close();
+}
+
 async function telaSimples(browser, base, [nome, caminho]) {
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   page.setDefaultTimeout(TIMEOUT_MS);
@@ -287,6 +342,7 @@ async function main() {
     await telaMedias(browser, base);
     await telaMediasFormatoReal(browser, base);
     await telaMediasDuasPlanilhas(browser, base);
+    await telaMediasPadroesKeli(browser, base);
     for (const t of TELAS_SIMPLES) await telaSimples(browser, base, t);
   } finally {
     if (browser) await browser.close();

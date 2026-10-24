@@ -10,30 +10,38 @@
   // o arquivo se houver valor nela (nunca sai placeholder).
   // alternativas: outros cabeçalhos aceitos para a mesma coluna (a planilha de férias usa "R$" em vez de "(R$)").
   // A comparação ignora acento e maiúsculas.
-  // Confirmados na tela da Domínio: 150 (HE 50%), 236 (Prêmio assiduidade, na coluna Assiduidade), 250 (Reflexo HE no rep. semanal).
-  // Pedro confirmou o mapeamento: 150 = HE 50%, 236 = Assiduidade, 250 = DSR HE; Prêmio (R$) sem código.
-  // DSR comissões: código ainda não informado (null); se a planilha trouxer valor maior que zero, bloqueia.
+  // Padrões da Keli (Gota Limpa, empresa 316): são os códigos de fábrica da tela. DSR HE e DSR outros têm o mesmo
+  // código (250): quando as duas colunas têm valor para o mesmo empregado e competência, o core soma em uma linha só.
   const COLUNAS = [
     { cabecalho: 'HE 50% (h:mm)', descricao: 'HE 50%', tipo: 'horas', rubrica: '150' },
-    { cabecalho: 'HE 65% (h:mm)', descricao: 'HE 65%', tipo: 'horas', rubrica: null },
-    { cabecalho: 'HE 100% (h:mm)', descricao: 'HE 100%', tipo: 'horas', rubrica: null },
-    { cabecalho: 'Adic. noturno (h:mm)', descricao: 'Adicional noturno', tipo: 'horas', rubrica: null },
-    { cabecalho: 'Comissões (R$)', alternativas: ['Comissões R$'], descricao: 'Comissões', tipo: 'valor', rubrica: null },
-    { cabecalho: 'Prêmio (R$)', alternativas: ['Prêmio R$'], descricao: 'Prêmio', tipo: 'valor', rubrica: null },
+    { cabecalho: 'HE 65% (h:mm)', descricao: 'HE 65%', tipo: 'horas', rubrica: '240' },
+    { cabecalho: 'HE 100% (h:mm)', descricao: 'HE 100%', tipo: 'horas', rubrica: '200' },
+    { cabecalho: 'Adic. noturno (h:mm)', descricao: 'Adicional noturno', tipo: 'horas', rubrica: '25' },
+    { cabecalho: 'Comissões (R$)', alternativas: ['Comissões R$'], descricao: 'Comissões', tipo: 'valor', rubrica: '37' },
+    { cabecalho: 'Prêmio (R$)', alternativas: ['Prêmio R$'], descricao: 'Prêmio', tipo: 'valor', rubrica: '243' },
     { cabecalho: 'Assiduidade (R$)', alternativas: ['Assiduidade R$'], descricao: 'Assiduidade', tipo: 'valor', rubrica: '236' },
     { cabecalho: 'DSR HE (R$)', alternativas: ['DSR horas extras R$'], descricao: 'DSR sobre HE', tipo: 'valor', rubrica: '250' },
-    { cabecalho: 'DSR noturno (R$)', alternativas: ['DSR adicional noturno R$'], descricao: 'DSR noturno', tipo: 'valor', rubrica: null },
-    { cabecalho: 'DSR outros (R$)', alternativas: ['DSR outros R$'], descricao: 'DSR outros', tipo: 'valor', rubrica: null },
-    { cabecalho: 'DSR comissões (R$)', alternativas: ['DSR comissões R$'], descricao: 'DSR comissões', tipo: 'valor', rubrica: null }
+    { cabecalho: 'DSR noturno (R$)', alternativas: ['DSR adicional noturno R$'], descricao: 'DSR noturno', tipo: 'valor', rubrica: '854' },
+    { cabecalho: 'DSR outros (R$)', alternativas: ['DSR outros R$'], descricao: 'DSR outros', tipo: 'valor', rubrica: '250' },
+    { cabecalho: 'DSR comissões (R$)', alternativas: ['DSR comissões R$'], descricao: 'DSR comissões', tipo: 'valor', rubrica: '853' }
   ];
+
+  // Empresa de fábrica na Domínio (Gota Limpa). Continua editável na tela.
+  const EMPRESA_PADRAO = '316';
 
   // Formato da data do lançamento: dia fixo + mês e ano da competência (padrão 01/MM/AAAA).
   // A confirmar com o arquivo modelo da Domínio (ver decisões).
   const FORMATO_DATA = { dia: '01', separador: '/' };
 
+  // Formato do valor no TXT, num único lugar. Hoje: centavos inteiros sem vírgula (40000 = R$ 400,00; 7431 = 74:31).
+  // A Keli ainda vai confirmar com um teste de 1 linha no Domínio; se for decimal, troque só esta função.
+  const FORMATAR_VALOR_TXT = valor => String(valor);
+
   const cfg = {
     COLUNAS,
+    EMPRESA_PADRAO,
     FORMATO_DATA,
+    FORMATAR_VALOR_TXT,
     SEPARADOR_TXT: ';',
     FIM_DE_LINHA: '\r\n',
     // cabeçalhos da planilha (lidos pelo nome, não pela posição da coluna)

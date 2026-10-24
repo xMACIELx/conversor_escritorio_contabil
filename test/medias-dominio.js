@@ -5,12 +5,15 @@ const path = require('path');
 
 const DIR = path.join(__dirname, '..', 'medias-dominio');
 const Core = require(path.join(DIR, 'core.js'));
-const CFG_DATA = require(path.join(DIR, 'config.js')).FORMATO_DATA;
+const CFG = require(path.join(DIR, 'config.js'));
+const CFG_DATA = CFG.FORMATO_DATA;
 const XLSX = require(path.join(DIR, '..', 'ponto-dominio', 'vendor', 'xlsx.full.min.js'));
 // Amostras sintéticas do formato real (SYN-166), as mesmas que o smoke usa
 const GEN = require(path.join(__dirname, '..', 'tests', 'smoke', 'medias-amostra.js'));
 // SYN-184: 13º com Matrícula e férias sem Matrícula (cabeçalhos alternativos, abas extras)
 const GEN2 = require(path.join(__dirname, '..', 'tests', 'smoke', 'medias-ferias-amostra.js'));
+// SYN-196: soma de colunas com a mesma rubrica, duplicata real e nome parcial em 8 competências
+const PAD = require(path.join(__dirname, '..', 'tests', 'smoke', 'medias-padroes-amostra.js'));
 
 // Relação de Empregados sintética (código e nome, como o PDF da Domínio entregaria)
 const LISTA = [
@@ -49,6 +52,15 @@ function gerar(linhas, opts) {
   const lido = Core.lerLancamentos(XLSX, pasta(planilha(linhas, o.cabecalho)));
   const casamento = Core.casarEmpregados(lido.linhas, o.lista || LISTA);
   return Core.gerarTxt({ empresa: 'empresa' in o ? o.empresa : '7', lancamentos: lido.linhas, pendencias: lido.pendencias, casamento });
+}
+
+// Roda fn com a rubrica da coluna zerada (sem código) e devolve a config ao código da Keli depois.
+// Os códigos de fábrica cobrem todas as colunas, então a regra "sem código" só se testa assim.
+function semRubrica(descricao, fn) {
+  const c = CFG.COLUNAS.find(x => x.descricao === descricao);
+  const antes = c.rubrica;
+  c.rubrica = null;
+  try { return fn(); } finally { c.rubrica = antes; }
 }
 
 // Amostra base: uma pessoa com exato, uma com exato (acento), uma sem par, uma ambígua
@@ -147,10 +159,10 @@ module.exports = async function run(check) {
     Core.fmtHorasHM(r.totais.porRubrica.find(t => t.rubrica === '150').total) === '76:01');
   check('sem pendência bloqueante no caso base', r.bloqueado === false);
 
-  const rub = gerar([lin('001', 'Maria da Silva', '09/2026', { 'HE 65% (h:mm)': '2:00' })]);
+  const rub = semRubrica('HE 65%', () => gerar([lin('001', 'Maria da Silva', '09/2026', { 'HE 65% (h:mm)': '2:00' })]));
   check('rubrica sem código com valor: bloqueia e não gera placeholder', rub.bloqueado && rub.linhas.length === 0 &&
     rub.pendencias.some(p => p.tipo === 'rubrica_sem_codigo') && !rub.texto.includes('?'), JSON.stringify(rub.pendencias));
-  const rubZero = gerar([lin('001', 'Maria da Silva', '09/2026', { 'HE 65% (h:mm)': '0:00' })]);
+  const rubZero = semRubrica('HE 65%', () => gerar([lin('001', 'Maria da Silva', '09/2026', { 'HE 65% (h:mm)': '0:00' })]));
   check('rubrica sem código com valor zero não bloqueia', rubZero.bloqueado === false && rubZero.linhas.length === 0);
   const neg = gerar([lin('002', 'José Santos', '09/2026', { 'Prêmio (R$)': 'R$ -50,00' })]);
   check('valor negativo não entra no arquivo e não bloqueia', neg.linhas.length === 0 && neg.bloqueado === false &&
@@ -360,7 +372,7 @@ module.exports = async function run(check) {
   check('com conflito o arquivo não sai (bloqueado)', txtConflito.bloqueado === true);
 
   console.log('\nMédias → Domínio: DSR comissões e casos de bloqueio (SYN-184)');
-  const dscomComValor = gerarTxtDe(GEN2.gerarPlanilhaFerias(feriasCom(l => (l['Empregado'] === 'Diego Teste Alves' ? Object.assign({}, l, { 'DSR comissões R$': 'R$ 10,00' }) : l))));
+  const dscomComValor = semRubrica('DSR comissões', () => gerarTxtDe(GEN2.gerarPlanilhaFerias(feriasCom(l => (l['Empregado'] === 'Diego Teste Alves' ? Object.assign({}, l, { 'DSR comissões R$': 'R$ 10,00' }) : l)))));
   check('DSR comissões com valor maior que zero e sem código bloqueia', dscomComValor.bloqueado === true &&
     dscomComValor.pendencias.some(p => p.tipo === 'rubrica_sem_codigo' && /DSR comissões/.test(p.detalhe)), JSON.stringify(dscomComValor.pendencias));
   const dscomZero = gerarTxtDe(GEN2.gerarPlanilhaFerias());
@@ -377,6 +389,62 @@ module.exports = async function run(check) {
   check('cabeçalhos sem acento e em maiúsculas ("COMPETENCIA (MM/AAAA)", "ASSIDUIDADE R$") são lidos',
     feriasCaixa.linhas.length === 4 && feriasCaixa.avisos.length === 0 && feriasCaixa.linhas[0].valores.find(v => v.coluna.rubrica === '236').valor === 10000,
     JSON.stringify(feriasCaixa.avisos));
+
+  // ---- SYN-196: padrões da Keli de fábrica ----
+  console.log('\nMédias → Domínio: padrões da Keli de fábrica (SYN-196)');
+  check('empresa de fábrica é 316 (EMPRESA_PADRAO)', CFG.EMPRESA_PADRAO === '316', String(CFG.EMPRESA_PADRAO));
+  const RUBRICAS_KELI = { 'HE 50%': '150', 'HE 65%': '240', 'HE 100%': '200', 'Adicional noturno': '25', 'Comissões': '37',
+    'Prêmio': '243', 'Assiduidade': '236', 'DSR sobre HE': '250', 'DSR noturno': '854', 'DSR comissões': '853', 'DSR outros': '250' };
+  const rubDe = d => (CFG.COLUNAS.find(c => c.descricao === d) || {}).rubrica;
+  check('rubricas da Keli nas 11 colunas (DSR HE e DSR outros, ambas 250)', CFG.COLUNAS.length === 11 &&
+    Object.keys(RUBRICAS_KELI).every(d => rubDe(d) === RUBRICAS_KELI[d]), JSON.stringify(CFG.COLUNAS.map(c => [c.descricao, c.rubrica])));
+  check('formato do valor isolado na config: centavos sem vírgula (40000 vira "40000", 7431 vira "7431")',
+    CFG.FORMATAR_VALOR_TXT(40000) === '40000' && CFG.FORMATAR_VALOR_TXT(7431) === '7431');
+
+  const LISTA_PAD = [{ codigo: '201', nome: 'Teste Soma Um' }, { codigo: '202', nome: 'Teste Soma Dois' }, { codigo: '203', nome: 'Teste Repetido' }];
+  const txtPad = linhasPad => {
+    const lido = Core.lerLancamentos(XLSX, lerWb(PAD.gerarPlanilha(linhasPad)));
+    return Core.gerarTxt({ empresa: '7', lancamentos: lido.linhas, pendencias: lido.pendencias, casamento: Core.casarEmpregados(lido.linhas, LISTA_PAD) });
+  };
+
+  console.log('\nMédias → Domínio: soma de colunas com a mesma rubrica (SYN-196)');
+  const soma = txtPad(PAD.LINHAS_SOMA);
+  check('DSR HE + DSR outros do mesmo empregado e competência saem somados em uma linha 250 (2000 = R$ 20,00)',
+    JSON.stringify(soma.linhas) === JSON.stringify(PAD.TXT_SOMA) && soma.bloqueado === false, JSON.stringify(soma.linhas));
+  check('o relatório conta 1 lançamento somado (o DSR outros de Teste Soma Um)', soma.totais.linhasSomadas === 1, String(soma.totais.linhasSomadas));
+  check('a soma não vira duplicata: nenhuma pendência de lançamento repetido', !soma.pendencias.some(p => p.tipo === 'lancamento_repetido'));
+  check('total da rubrica 250 soma as duas linhas (R$ 25,00)', Core.fmtReais(soma.totais.porRubrica.find(t => t.rubrica === '250').total) === 'R$ 25,00',
+    JSON.stringify(soma.totais.porRubrica));
+
+  const rep = txtPad(PAD.LINHAS_REPETIDA);
+  check('mesma coluna (DSR HE) duas vezes para o mesmo empregado e competência bloqueia, mesmo com DSR outros somada',
+    rep.bloqueado === true && rep.pendencias.some(p => p.tipo === 'lancamento_repetido' && p.bloqueia), JSON.stringify(rep.pendencias));
+
+  // A mesma linha nas duas planilhas: cada coluna é duplicata igual e entra uma vez (não é somada). 250 = 2000, não 4000.
+  const entre = Core.unirPlanilhas(XLSX, [
+    { rotulo: 'A', wb: lerWb(PAD.gerarPlanilha([PAD.LINHAS_SOMA[0]])) },
+    { rotulo: 'B', wb: lerWb(PAD.gerarPlanilha([PAD.LINHAS_SOMA[0]])) }]);
+  const txtEntre = Core.gerarTxt({ empresa: '7', lancamentos: entre.linhas, pendencias: entre.pendencias, casamento: Core.casarEmpregados(entre.linhas, LISTA_PAD) });
+  check('duplicata igual entre planilhas continua removida, não somada: duas colunas iguais saem uma vez (250 = 2000)',
+    entre.duplicatasRemovidas === 2 && JSON.stringify(txtEntre.linhas) === JSON.stringify(['7;201;01/09/2026;250;2000']) && txtEntre.bloqueado === false,
+    JSON.stringify(txtEntre.linhas) + ' dup=' + entre.duplicatasRemovidas);
+
+  console.log('\nMédias → Domínio: nome parcial repetido em várias competências (SYN-196)');
+  const pl8 = Core.lerLancamentos(XLSX, lerWb(PAD.gerarPlanilha(PAD.LINHAS_PARCIAL_8)));
+  const ext8 = seguro(() => Core.extrairEmpregadosDeItens([PAD.ITENS_PARCIAL], pl8.linhas.map(l => l.nome)), SEM);
+  const e401 = ext8.empregados.find(e => e.codigo === '401') || {};
+  check('nome parcial nas 8 competências, um só nome distinto: cruza como parcial (401)', e401.nome === PAD.NOME_UM && e401.parcial === true &&
+    !ext8.pendencias.some(p => p.tipo === 'nome_parcial_ambiguo'), JSON.stringify(ext8));
+  const cas8 = Core.casarEmpregados(pl8.linhas, ext8.empregados).get(Core.normalizarNome(PAD.NOME_UM)) || {};
+  check('o cruzamento sai exato e marcado como parcial (nome parcial, conferir)', cas8.tipo === 'exato' && cas8.codigo === '401' && cas8.parcial === true, JSON.stringify(cas8));
+  const txt8 = Core.gerarTxt({ empresa: '7', lancamentos: pl8.linhas, pendencias: pl8.pendencias, casamento: Core.casarEmpregados(pl8.linhas, ext8.empregados) });
+  check('as 8 competências viram 8 linhas de HE 50% para o 401, sem bloqueio', txt8.linhas.length === 8 && txt8.linhas[0] === '7;401;01/01/2026;150;100' &&
+    txt8.bloqueado === false, JSON.stringify(txt8.linhas));
+  const pl2 = Core.lerLancamentos(XLSX, lerWb(PAD.gerarPlanilha(PAD.LINHAS_PARCIAL_DOIS)));
+  const ext2 = seguro(() => Core.extrairEmpregadosDeItens([PAD.ITENS_PARCIAL], pl2.linhas.map(l => l.nome)), SEM);
+  const amb2 = ext2.pendencias.find(p => p.tipo === 'nome_parcial_ambiguo' && p.codigo === '401') || {};
+  check('dois nomes distintos ("Silva Lima" e "Souza Reis") não cruzam: sem código, pendência com 2 candidatos', !ext2.empregados.some(e => e.codigo === '401') &&
+    /é início de 2 nomes/.test(amb2.detalhe || ''), JSON.stringify(ext2.pendencias));
 
   // Lê uma planilha de uma vez (a ferramenta lê uma planilha: a junção com a outra é em unirPlanilhas)
   function gerarTxtDe(buf) {
