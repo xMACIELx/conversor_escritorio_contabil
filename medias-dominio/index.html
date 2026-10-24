@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Médias → Domínio</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="../assets/shared.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="wrap">
+      <div class="top-nav">
+        <a href="../" class="back-link">← Início</a>
+        <h1>Médias <span>→ Domínio</span></h1>
+      </div>
+      <p class="privacy"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1 2.5 3v4.5c0 3.3 2.3 6 5.5 7.5 3.2-1.5 5.5-4.2 5.5-7.5V3L8 1Zm-1 9.2L4.8 8l.9-.9L7 8.4l3.3-3.3.9.9L7 10.2Z" fill="currentColor"/></svg>
+        Seus dados não saem deste computador</p>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="step">
+      <h2><b>1</b> Empresa e formato da data</h2>
+      <div class="campos">
+        <label class="campo">Código da empresa na Domínio
+          <input type="text" id="empresa" inputmode="numeric" autocomplete="off" placeholder="ex.: 7">
+        </label>
+        <label class="campo">Formato da data do lançamento
+          <select id="formato-data">
+            <option value="/">01/MM/AAAA (padrão)</option>
+            <option value="-">01-MM-AAAA</option>
+          </select>
+        </label>
+      </div>
+    </section>
+
+    <section class="step">
+      <h2><b>2</b> Envie a planilha e a Relação de Empregados</h2>
+      <div class="uploads">
+        <label id="drop-xlsx" class="drop" tabindex="0">
+          <input id="file-xlsx" type="file" accept=".xlsx,.xls" hidden>
+          <span class="drop-title">Planilha de apuração (.xlsx)</span>
+          <span class="drop-main" id="xlsx-main">Arraste a planilha aqui</span>
+          <span class="drop-sub" id="xlsx-sub">ou clique para procurar no computador</span>
+        </label>
+        <label id="drop-pdf" class="drop" tabindex="0">
+          <input id="file-pdf" type="file" accept=".pdf,application/pdf" hidden>
+          <span class="drop-title">Relação de Empregados da Domínio (PDF)</span>
+          <span class="drop-main" id="pdf-main">Arraste o PDF aqui</span>
+          <span class="drop-sub" id="pdf-sub">ou clique para procurar no computador</span>
+        </label>
+      </div>
+    </section>
+
+    <section class="step">
+      <h2><b>3</b> Códigos das rubricas</h2>
+      <p class="hint">Uma linha por coluna da planilha. Coluna com valor e sem código bloqueia a geração. Os códigos são só o que a contabilidade confirmou na Domínio; confira antes de gerar.</p>
+      <div class="scroll">
+        <table id="t-rubricas">
+          <thead>
+            <tr><th scope="col">Coluna da planilha</th><th scope="col">Tipo</th><th scope="col">Código da rubrica</th></tr>
+          </thead>
+          <tbody id="rubricas-corpo"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="step">
+      <h2><b>4</b> Gere o arquivo</h2>
+      <div class="actions">
+        <button id="gerar" class="btn" type="button">Gerar</button>
+        <span id="status" class="note" role="status"></span>
+      </div>
+      <p id="aviso" class="banner bad" role="alert" hidden></p>
+    </section>
+
+    <section id="resultado" hidden>
+      <section class="step">
+        <h2><b>5</b> Relatório</h2>
+        <div id="banner" class="banner" role="status"></div>
+        <ul id="resumo" class="checks">
+          <li class="info"><span class="mark">i</span><span><strong id="resumo-cruzados"></strong></span></li>
+          <li class="info"><span class="mark">i</span><span><strong id="resumo-pendencias"></strong></span></li>
+          <li class="info"><span class="mark">i</span><span><strong id="resumo-linhas"></strong></span></li>
+        </ul>
+
+        <h3>Empregados cruzados <span id="n-cruzados" class="note"></span></h3>
+        <div class="scroll"><table id="t-cruzados"></table></div>
+
+        <h3>Pendências <span id="n-pendencias" class="note"></span></h3>
+        <p class="hint">Sem código ou ambíguo: o empregado fica de fora do arquivo. Nunca chutamos o código.</p>
+        <div class="scroll"><table id="t-pendencias"></table></div>
+
+        <h3>Total por rubrica</h3>
+        <div class="scroll"><table id="t-totais"></table></div>
+      </section>
+
+      <section class="step" id="sec-arquivo">
+        <h2><b>6</b> Baixe o arquivo</h2>
+        <div class="actions">
+          <button id="baixar" class="btn" type="button">Baixar lancar_medias.txt</button>
+        </div>
+        <h3>Conteúdo do arquivo</h3>
+        <textarea id="txt-previa" class="copy" readonly aria-label="Conteúdo do arquivo de importação"></textarea>
+      </section>
+    </section>
+  </main>
+
+  <footer class="wrap foot">Tudo é processado aqui no navegador. Nenhum dado é enviado, salvo ou registrado.</footer>
+
+  <script src="../ponto-dominio/vendor/pdf.min.js"></script>
+  <script src="../ponto-dominio/vendor/xlsx.full.min.js"></script>
+  <script src="config.js"></script>
+  <script src="core.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
