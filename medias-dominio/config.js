@@ -8,16 +8,16 @@
   // tipo: 'horas' (valor em H,MM, ex.: 74:31 vira 7431) ou 'valor' (R$ em centavos, ex.: R$ 400,00 vira 40000).
   // rubrica: código da Domínio. null = código ainda não informado: a coluna não gera linha e o relatório bloqueia
   // o arquivo se houver valor nela (nunca sai placeholder).
-  // Confirmados na tela da Domínio: 150 (HE 50%), 236 (Prêmio assiduidade), 250 (Reflexo HE no rep. semanal).
-  // A coluna que recebe cada um deles ainda precisa de confirmação da contabilidade (ver decisões).
+  // Confirmados na tela da Domínio: 150 (HE 50%), 236 (Prêmio assiduidade, na coluna Assiduidade), 250 (Reflexo HE no rep. semanal).
+  // Pedro confirmou o mapeamento: 150 = HE 50%, 236 = Assiduidade, 250 = DSR HE; Prêmio (R$) sem código.
   const COLUNAS = [
     { cabecalho: 'HE 50% (h:mm)', descricao: 'HE 50%', tipo: 'horas', rubrica: '150' },
     { cabecalho: 'HE 65% (h:mm)', descricao: 'HE 65%', tipo: 'horas', rubrica: null },
     { cabecalho: 'HE 100% (h:mm)', descricao: 'HE 100%', tipo: 'horas', rubrica: null },
     { cabecalho: 'Adic. noturno (h:mm)', descricao: 'Adicional noturno', tipo: 'horas', rubrica: null },
     { cabecalho: 'Comissões (R$)', descricao: 'Comissões', tipo: 'valor', rubrica: null },
-    { cabecalho: 'Prêmio (R$)', descricao: 'Prêmio', tipo: 'valor', rubrica: '236' },
-    { cabecalho: 'Assiduidade (R$)', descricao: 'Assiduidade', tipo: 'valor', rubrica: null },
+    { cabecalho: 'Prêmio (R$)', descricao: 'Prêmio', tipo: 'valor', rubrica: null },
+    { cabecalho: 'Assiduidade (R$)', descricao: 'Assiduidade', tipo: 'valor', rubrica: '236' },
     { cabecalho: 'DSR HE (R$)', descricao: 'DSR sobre HE', tipo: 'valor', rubrica: '250' },
     { cabecalho: 'DSR noturno (R$)', descricao: 'DSR noturno', tipo: 'valor', rubrica: null },
     { cabecalho: 'DSR outros (R$)', descricao: 'DSR outros', tipo: 'valor', rubrica: null }

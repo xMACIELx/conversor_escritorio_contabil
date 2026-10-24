@@ -5,10 +5,6 @@
   const CFG = window.MediasConfig, Core = window.MediasCore;
   const NOME_ARQUIVO = 'lancar_medias.txt';
 
-  // Códigos que a tela já traz preenchidos (confirmados na tela da Domínio). Chave: cabecalho da coluna.
-  // Prêmio e as demais ficam em branco. Valem só a partir da tela: ao gerar, a tabela substitui o config.js.
-  const RUBRICAS_INICIAIS = { 'HE 50% (h:mm)': '150', 'Assiduidade (R$)': '236', 'DSR HE (R$)': '250' };
-
   const state = { xlsxBuf: null, pdfBuf: null, res: null };
   const rubricaInputs = [];
 
@@ -33,7 +29,7 @@
       input.inputMode = 'numeric';
       input.id = 'rub-' + i;
       input.size = 8;
-      input.value = Object.prototype.hasOwnProperty.call(RUBRICAS_INICIAIS, c.cabecalho) ? RUBRICAS_INICIAIS[c.cabecalho] : '';
+      input.value = c.rubrica || '';
       input.setAttribute('aria-label', 'Código da rubrica para ' + c.cabecalho);
       input.addEventListener('input', invalidar);
       rubricaInputs.push(input);

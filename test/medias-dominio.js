@@ -49,7 +49,7 @@ function gerar(linhas, opts) {
 
 // Amostra base: uma pessoa com exato, uma com exato (acento), uma sem par, uma ambígua
 const BASE = [
-  lin('001', 'Maria da Silva', '09/2026', { 'HE 50% (h:mm)': '74:31', 'Comissões (R$)': 0, 'Prêmio (R$)': 'R$ 400,00', 'DSR HE (R$)': 'R$ 12,50' }),
+  lin('001', 'Maria da Silva', '09/2026', { 'HE 50% (h:mm)': '74:31', 'Comissões (R$)': 0, 'Assiduidade (R$)': 'R$ 400,00', 'DSR HE (R$)': 'R$ 12,50' }),
   lin('002', 'José Santos', '09/2026', { 'HE 50% (h:mm)': '1:30', 'Prêmio (R$)': 0 }),
   lin('003', 'Ana Paula Lima', '09/2026', { 'HE 50% (h:mm)': '2:00' }),
   lin('004', 'Carlos Souza', '09/2026', { 'DSR HE (R$)': 'R$ 5,00' })
@@ -107,9 +107,9 @@ module.exports = async function run(check) {
   console.log('\nMédias → Domínio: planilha lida pelo cabeçalho');
   const lido = Core.lerLancamentos(XLSX, pasta(planilha(BASE)));
   const maria = lido.linhas[0];
-  check('lê Maria: competência 09/2026, HE 50% = 7431 e Prêmio = 40000', lido.linhas.length === 4 && maria.mm === '09' && maria.aaaa === '2026' &&
+  check('lê Maria: competência 09/2026, HE 50% = 7431 e Assiduidade = 40000', lido.linhas.length === 4 && maria.mm === '09' && maria.aaaa === '2026' &&
     maria.valores.find(v => v.coluna.cabecalho === 'HE 50% (h:mm)').valor === 7431 &&
-    maria.valores.find(v => v.coluna.cabecalho === 'Prêmio (R$)').valor === 40000);
+    maria.valores.find(v => v.coluna.cabecalho === 'Assiduidade (R$)').valor === 40000);
   const semDsr = Core.lerLancamentos(XLSX, pasta(planilha(BASE, CABECALHO.filter(c => c !== 'DSR outros (R$)'))));
   check('coluna de valor ausente bloqueia (não sai sem ela)', semDsr.pendencias.some(p => p.tipo === 'coluna_ausente' && p.bloqueia));
   const compRuim = Core.lerLancamentos(XLSX, pasta(planilha([lin('005', 'Maria da Silva', '13/2026', { 'HE 50% (h:mm)': '1:00' })])));
