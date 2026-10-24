@@ -122,7 +122,146 @@ h1 span {
 
 /* Grid de Ferramentas / Cards */
 .tools-section {
-  margin-top: 36px;
+  margin-top: 24px;
+}
+
+/* Home: busca, seções (favoritos, recentes e grupos) e estrela */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.busca-bloco {
+  margin-top: 28px;
+}
+
+.busca {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 14px;
+  font: inherit;
+  font-size: 1rem;
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.busca:focus-visible,
+.busca-limpar:focus-visible,
+.btn-fav:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.busca-linha {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+  margin-top: 8px;
+}
+
+.busca-dica {
+  margin: 0;
+  font-size: .85rem;
+  color: var(--muted);
+}
+
+.busca-dica kbd {
+  font: inherit;
+  font-weight: 600;
+  padding: 0 5px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--card);
+}
+
+.busca-status {
+  margin: 0;
+  font-size: .95rem;
+  font-weight: 600;
+}
+
+/* Sem display aqui, para o atributo hidden continuar valendo */
+.busca-limpar {
+  min-height: 44px;
+  padding: 0 16px;
+  font: inherit;
+  font-size: .95rem;
+  font-weight: 600;
+  color: var(--accent);
+  background: transparent;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.home-secao + .home-secao {
+  margin-top: 32px;
+}
+
+.secao-titulo {
+  margin: 0 0 14px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.tool-wrap {
+  position: relative;
+  display: flex;
+}
+
+.tool-wrap > .tool-card {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.tool-wrap .tool-card-title {
+  padding-right: 40px; /* espaço da estrela */
+}
+
+.btn-fav {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.btn-fav:hover {
+  background: rgba(29, 92, 74, .08);
+}
+
+.btn-fav[aria-pressed="true"] {
+  color: var(--accent);
+}
+
+.btn-fav path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
+.btn-fav[aria-pressed="true"] path {
+  fill: currentColor;
 }
 
 .tools-grid {
