@@ -63,11 +63,47 @@
   }
 
   // Posição das colunas Código, Nome e Cargo na linha de cabeçalho (ou null se não for o cabeçalho).
+  // Aceita "Código" e "Nome" em textos separados, ou "Código Nome" num texto só: aí o x do Nome sai da
+  // proporção de caracteres do texto (o pdf.js entrega o cabeçalho assim).
   function acharCabecalho(itens) {
     const C = CFG.CABECALHO_RELACAO;
     const ach = nome => itens.find(i => normalizarNome(i.s) === normalizarNome(nome));
-    const c = ach(C.codigo), n = ach(C.nome), g = ach(C.cargo);
+    const g = ach(C.cargo);
+    const juntos = ach(C.codigoNome);
+    if (juntos && g) {
+      const partes = /^(\S+)(\s+)(\S+)$/.exec(texto(juntos.s));
+      if (partes) {
+        const antes = partes[1].length + partes[2].length;
+        return { codigo: juntos.x, nome: juntos.x + juntos.w * antes / texto(juntos.s).length, cargo: g.x };
+      }
+    }
+    const c = ach(C.codigo), n = ach(C.nome);
     return c && n && g ? { codigo: c.x, nome: n.x, cargo: g.x } : null;
+  }
+
+  // Linha de empregado com código e nome no mesmo texto ("941 ADELSON DA COSTA"): o código vira item próprio
+  // e o nome começa na coluna do nome (cab.nome), com a largura que sobra do texto original.
+  function separarCodigoNome(itens, cab) {
+    const T = CFG.TOLERANCIA_X_PT;
+    const saida = [];
+    itens.forEach(i => {
+      const m = /^(\d+)\s+(\S.*)$/.exec(texto(i.s));
+      if (!m || !(i.x < cab.nome - T)) { saida.push(i); return; }
+      saida.push({ s: m[1], x: i.x, w: 0 });
+      saida.push({ s: m[2], x: cab.nome, w: Math.max(0, i.x + i.w - cab.nome) });
+    });
+    return saida;
+  }
+
+  // Nome da planilha que casa com o texto da linha do PDF (nome + primeiras palavras do cargo).
+  // Casa quando o texto é igual ao nome ou começa com ele seguido de espaço. Escolhe o mais longo.
+  function nomeDaPlanilhaNoTexto(texto_, nomes) {
+    const t = normalizarNome(texto_);
+    let melhor = null;
+    nomes.forEach(n => {
+      if ((t === n.norm || t.startsWith(n.norm + ' ')) && (!melhor || n.norm.length > melhor.norm.length)) melhor = n;
+    });
+    return melhor;
   }
 
   // Junta os pedaços de um nome; só põe espaço quando há folga entre um pedaço e o seguinte.
@@ -82,24 +118,38 @@
   }
 
   // paginas: [ [ { s, x, y, w } ] ] (um array de itens por página).
-  // Lê só a coluna do nome, pela posição do cabeçalho: nome e cargo se sobrepõem no PDF, então um item que
-  // cruza a coluna do cargo não é separado com chute; vira pendência.
+  // nomesPlanilha (opcional): nomes da planilha de apuração. Uma linha em que o texto avança sobre a coluna do
+  // cargo (ou tem texto na coluna do cargo) é casada pelo prefixo de palavras com esses nomes; escolhe o mais
+  // longo. Sem casamento, cruzando o cargo, vira pendência; a linha sem texto no cargo segue o caminho normal.
+  // Sem nomesPlanilha, o comportamento é só o de separar a coluna do nome.
   // Retorna { empregados: [{ codigo, nome, pagina }], pendencias: [{ tipo, pagina, codigo, detalhe }] }
-  function extrairEmpregadosDeItens(paginas) {
+  function extrairEmpregadosDeItens(paginas, nomesPlanilha) {
     const empregados = [], pendencias = [], vistos = new Set();
     const T = CFG.TOLERANCIA_X_PT;
+    const nomes = (nomesPlanilha || []).map(n => ({ original: texto(n), norm: normalizarNome(n) })).filter(n => n.norm !== '');
+    const adicionar = (codigo, nome, pagina) => {
+      const chave = codigo + '|' + normalizarNome(nome);
+      if (vistos.has(chave)) return;
+      vistos.add(chave);
+      empregados.push({ codigo, nome, pagina });
+    };
     let cab = null;
     paginas.forEach((itens, p) => {
       const pagina = p + 1;
       agruparLinhas(itens).forEach(linha => {
-        const it = linha.items;
-        const achado = acharCabecalho(it);
+        const achado = acharCabecalho(linha.items);
         if (achado) { cab = achado; return; }
         if (!cab) return;
+        const it = separarCodigoNome(linha.items, cab);
         const cod = it.find(i => /^\d+$/.test(i.s) && i.x < cab.nome - T);
         if (!cod) return; // título, rodapé, totais: não é linha de empregado
         const daNome = it.filter(i => i !== cod && i.x >= cab.nome - T);
         const cruza = daNome.find(i => i.x < cab.cargo - T && i.x + i.w > cab.cargo + T);
+        const temCargo = daNome.some(i => i.x >= cab.cargo - T);
+        if (nomes.length && (cruza || temCargo)) {
+          const casado = nomeDaPlanilhaNoTexto(juntarTexto(daNome), nomes);
+          if (casado) { adicionar(cod.s, casado.original, pagina); return; }
+        }
         if (cruza) {
           pendencias.push({ tipo: 'nome_e_cargo_no_mesmo_trecho', pagina, codigo: cod.s,
             detalhe: 'Texto "' + cruza.s + '" avança até a coluna do cargo. Não separei o nome; confira esta linha no PDF.' });
@@ -107,10 +157,7 @@
         }
         const nome = juntarTexto(daNome.filter(i => i.x < cab.cargo - T));
         if (nome === '') { pendencias.push({ tipo: 'codigo_sem_nome', pagina, codigo: cod.s, detalhe: 'Código sem nome na mesma linha.' }); return; }
-        const chave = cod.s + '|' + normalizarNome(nome);
-        if (vistos.has(chave)) return;
-        vistos.add(chave);
-        empregados.push({ codigo: cod.s, nome, pagina });
+        adicionar(cod.s, nome, pagina);
       });
     });
     if (!cab) throw new Error('Não achei o cabeçalho "Código / Nome / Cargo" no PDF. É a Relação de Empregados da Domínio?');
@@ -118,7 +165,8 @@
   }
 
   // Lê o PDF com o pdf.js já carregado (pdfjsLib, de vendor/). Sem rede: data é o próprio arquivo em bytes.
-  async function lerRelacaoPdf(pdfjsLib, data) {
+  // nomesPlanilha: ver extrairEmpregadosDeItens.
+  async function lerRelacaoPdf(pdfjsLib, data, nomesPlanilha) {
     const doc = await pdfjsLib.getDocument({
       data: data, isEvalSupported: false, disableFontFace: true, useSystemFonts: false
     }).promise;
@@ -128,7 +176,7 @@
       const tc = await page.getTextContent();
       paginas.push(tc.items.map(i => ({ s: i.str, x: i.transform[4], y: i.transform[5], w: i.width || 0 })));
     }
-    return extrairEmpregadosDeItens(paginas);
+    return extrairEmpregadosDeItens(paginas, nomesPlanilha);
   }
 
   // ---------- conversão de valores (inteiro) ----------
@@ -182,19 +230,21 @@
   function lerLancamentos(XLSX, wb) {
     const pendencias = [], linhas = [];
     const P = CFG.CABECALHO_PLANILHA;
-    const alvo = [P.empregado, P.competencia].map(normalizarNome);
+    // a competência aceita "Competência MM/AAAA" e "Competência" (comparação sem acento e sem maiúsculas)
+    const compAceitas = [P.competencia].concat(P.competenciaAlternativas || []).map(normalizarNome);
+    const empAceito = normalizarNome(P.empregado);
     let aba = null, grade = null, cab = null;
     for (const nome of wb.SheetNames) {
       const g = XLSX.utils.sheet_to_json(wb.Sheets[nome], { header: 1, raw: true, defval: null });
-      const h = g.findIndex(r => { const n = r.map(normalizarNome); return alvo.every(a => n.includes(a)); });
+      const h = g.findIndex(r => { const n = r.map(normalizarNome); return n.includes(empAceito) && compAceitas.some(a => n.includes(a)); });
       if (h >= 0) { aba = nome; grade = g; cab = { linha: h, nomes: g[h].map(normalizarNome) }; break; }
     }
     if (!cab) {
-      pendencias.push({ tipo: 'cabecalho_ausente', bloqueia: true, detalhe: 'Não achei a linha com "Empregado" e "Competência MM/AAAA" na planilha.' });
+      pendencias.push({ tipo: 'cabecalho_ausente', bloqueia: true, detalhe: 'Não achei a linha com "Empregado" e "Competência" na planilha.' });
       return { linhas, pendencias };
     }
     const col = nome => cab.nomes.indexOf(normalizarNome(nome));
-    const iMat = col(P.matricula), iEmp = col(P.empregado), iComp = col(P.competencia);
+    const iMat = col(P.matricula), iEmp = col(P.empregado), iComp = compAceitas.map(a => cab.nomes.indexOf(a)).find(i => i >= 0);
     if (iMat < 0) pendencias.push({ tipo: 'coluna_ausente', bloqueia: true, detalhe: 'Coluna "' + P.matricula + '" não encontrada.' });
     const colunas = CFG.COLUNAS.map(c => ({ c, i: col(c.cabecalho) }));
     colunas.forEach(({ c, i }) => {

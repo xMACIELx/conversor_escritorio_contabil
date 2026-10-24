@@ -121,7 +121,7 @@
       aplicarConfig();
       const wb = window.XLSX.read(state.xlsxBuf, { type: 'array' });
       const lido = Core.lerLancamentos(window.XLSX, wb);
-      const rel = await Core.lerRelacaoPdf(window.pdfjsLib, new Uint8Array(state.pdfBuf.slice(0)));
+      const rel = await Core.lerRelacaoPdf(window.pdfjsLib, new Uint8Array(state.pdfBuf.slice(0)), lido.linhas.map(l => l.nome));
       const casamento = Core.casarEmpregados(lido.linhas, rel.empregados);
       const pendencias = lido.pendencias.concat(rel.pendencias.map(p => Object.assign({ bloqueia: false }, p)));
       const res = Core.gerarTxt({ empresa: $('empresa').value, lancamentos: lido.linhas, pendencias, casamento });

@@ -33,9 +33,9 @@
     SEPARADOR_TXT: ';',
     FIM_DE_LINHA: '\r\n',
     // cabeçalhos da planilha (lidos pelo nome, não pela posição da coluna)
-    CABECALHO_PLANILHA: { matricula: 'Matrícula', empregado: 'Empregado', competencia: 'Competência MM/AAAA' },
-    // cabeçalho da Relação de Empregados (PDF da Domínio)
-    CABECALHO_RELACAO: { codigo: 'Código', nome: 'Nome', cargo: 'Cargo' },
+    CABECALHO_PLANILHA: { matricula: 'Matrícula', empregado: 'Empregado', competencia: 'Competência MM/AAAA', competenciaAlternativas: ['Competência'] },
+    // cabeçalho da Relação de Empregados (PDF da Domínio). codigoNome: "Código Nome" num texto só (como o pdf.js entrega)
+    CABECALHO_RELACAO: { codigo: 'Código', nome: 'Nome', cargo: 'Cargo', codigoNome: 'Código Nome' },
     // leitura do PDF por posição (pontos PDF)
     TOLERANCIA_Y_PT: 3,       // itens com y até 3 pt de diferença formam a mesma linha
     TOLERANCIA_X_PT: 5,       // folga horizontal para a coluna do nome e do código
