@@ -123,7 +123,7 @@
       const lido = Core.lerLancamentos(window.XLSX, wb);
       const rel = await Core.lerRelacaoPdf(window.pdfjsLib, new Uint8Array(state.pdfBuf.slice(0)), lido.linhas.map(l => l.nome));
       const casamento = Core.casarEmpregados(lido.linhas, rel.empregados);
-      const pendencias = lido.pendencias.concat(rel.pendencias.map(p => Object.assign({ bloqueia: false }, p)));
+      const pendencias = lido.pendencias.concat(lido.avisos, rel.pendencias.map(p => Object.assign({ bloqueia: false }, p)));
       const res = Core.gerarTxt({ empresa: $('empresa').value, lancamentos: lido.linhas, pendencias, casamento });
       state.res = Object.assign(res, { casamento, semCodigo: colunasSemCodigo(lido.linhas) });
       mostrarRelatorio();
@@ -139,6 +139,7 @@
   const ROTULOS = {
     sem_par: 'Sem código', ambiguo: 'Ambíguo', rubrica_sem_codigo: 'Rubrica sem código', valor_negativo: 'Valor negativo',
     valor_invalido: 'Valor ilegível', competencia_invalida: 'Competência inválida', linha_incompleta: 'Linha incompleta',
+    nome_repetido: 'Nome repetido na competência', conflito_entre_planilhas: 'Conflito entre planilhas',
     lancamento_repetido: 'Lançamento repetido', cabecalho_ausente: 'Cabeçalho não achado', coluna_ausente: 'Coluna ausente',
     empresa_ausente: 'Empresa vazia', nome_e_cargo_no_mesmo_trecho: 'PDF: nome e cargo juntos', codigo_sem_nome: 'PDF: código sem nome',
     nome_parcial_ambiguo: 'PDF: nome parcial ambíguo'
