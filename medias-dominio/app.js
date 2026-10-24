@@ -140,7 +140,8 @@
     sem_par: 'Sem código', ambiguo: 'Ambíguo', rubrica_sem_codigo: 'Rubrica sem código', valor_negativo: 'Valor negativo',
     valor_invalido: 'Valor ilegível', competencia_invalida: 'Competência inválida', linha_incompleta: 'Linha incompleta',
     lancamento_repetido: 'Lançamento repetido', cabecalho_ausente: 'Cabeçalho não achado', coluna_ausente: 'Coluna ausente',
-    empresa_ausente: 'Empresa vazia', nome_e_cargo_no_mesmo_trecho: 'PDF: nome e cargo juntos', codigo_sem_nome: 'PDF: código sem nome'
+    empresa_ausente: 'Empresa vazia', nome_e_cargo_no_mesmo_trecho: 'PDF: nome e cargo juntos', codigo_sem_nome: 'PDF: código sem nome',
+    nome_parcial_ambiguo: 'PDF: nome parcial ambíguo'
   };
 
   function tabela(id, cabecalhos, linhas, numericas) {
@@ -187,7 +188,8 @@
     $('n-cruzados').textContent = '(' + cruzados.length + ')';
     $('n-pendencias').textContent = '(' + pend.length + ')';
 
-    tabela('t-cruzados', ['Nome na planilha', 'Código na Domínio'], cruzados.map(c => [c.nome, c.codigo]));
+    tabela('t-cruzados', ['Nome na planilha', 'Código na Domínio', 'Conferência'],
+      cruzados.map(c => [c.nome, c.codigo, c.parcial ? 'nome parcial, conferir' : '']));
     tabela('t-pendencias', ['Situação', 'Nome', 'Linha', 'Detalhe'],
       pend.length ? pend.map(p => [(p.bloqueia ? 'Bloqueia: ' : '') + (ROTULOS[p.tipo] || p.tipo), p.nome || '', p.linha || '', p.detalhe || '']) : [['Nenhuma pendência.', '', '', '']]);
     tabela('t-totais', ['Rubrica', 'Lançamento', 'Linhas', 'Total'],

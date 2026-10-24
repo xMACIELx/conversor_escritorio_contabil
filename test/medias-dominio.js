@@ -95,13 +95,17 @@ module.exports = async function run(check) {
     { s: '103', x: 30, y: 640, w: 15 }, { s: 'CARLOS SOUZA', x: 100, y: 640, w: 230 }, { s: 'GERENTE', x: 300, y: 640, w: 50 }
   ]);
   const ext = Core.extrairEmpregadosDeItens([pagina]);
-  check('extrai código e nome só da coluna do nome (cargo fora)', ext.empregados.length === 2 &&
+  // SYN-169: CARLOS SOUZA (103) passa da coluna do cargo, mas o GERENTE vem depois no fluxo: o nome é lido. Antes era pendência.
+  check('extrai código e nome só da coluna do nome (cargo fora)', ext.empregados.length === 3 &&
     ext.empregados[0].codigo === '101' && ext.empregados[0].nome === 'MARIA DA SILVA' &&
-    ext.empregados[1].codigo === '102' && ext.empregados[1].nome === 'JOAO SANTOS',
+    ext.empregados[1].codigo === '102' && ext.empregados[1].nome === 'JOAO SANTOS' &&
+    ext.empregados[2].codigo === '103' && ext.empregados[2].nome === 'CARLOS SOUZA',
   JSON.stringify(ext.empregados));
   check('pedaços sem espaço entre eles viram uma palavra (JO + AO = JOAO)', ext.empregados[1].nome === 'JOAO SANTOS', ext.empregados[1].nome);
+  // SYN-169: o texto que cruza a coluna do cargo não é mais pendência: o nome vem antes do primeiro texto do cargo
   const cruz = ext.pendencias.find(p => p.tipo === 'nome_e_cargo_no_mesmo_trecho');
-  check('nome que cruza a coluna do cargo vira pendência, sem chute', !!cruz && cruz.codigo === '103' && ext.empregados.every(e => e.codigo !== '103'));
+  check('nome que cruza a coluna do cargo é lido até o texto do cargo (103 = CARLOS SOUZA, sem pendência)', !cruz &&
+    ext.empregados.some(e => e.codigo === '103' && e.nome === 'CARLOS SOUZA'), JSON.stringify(ext.pendencias));
   let semCab = false;
   try { Core.extrairEmpregadosDeItens([[{ s: '101', x: 30, y: 680, w: 15 }, { s: 'MARIA', x: 100, y: 680, w: 35 }]]); } catch (e) { semCab = true; }
   check('PDF sem cabeçalho Código/Nome/Cargo é recusado', semCab);
@@ -214,4 +218,79 @@ module.exports = async function run(check) {
   console.log('  PDF sintético: ' + lidosReal + ' empregado(s) lido(s) de ' + GEN.FORMATO_REAL.empregadosNoPdf + ' linha(s) de empregado');
   console.log('  cruzaram com a planilha sintética: ' + cruzados + ' de ' + casReal.size + ' nome(s)');
   console.log('  pendentes: sem par (' + semPar.join(', ') + '); ambíguo (' + ambiguos.join(', ') + ')');
+
+  // ---- Ordem do fluxo (SYN-169): textos escritos na ordem do PDF, não por x ----
+  console.log('\nMédias → Domínio: ordem do fluxo do PDF (nome antes da coluna do cargo)');
+  const O = GEN.ORDEM_FLUXO;
+  const lerOrdem = (itens, nomes) => seguro(() => Core.extrairEmpregadosDeItens([itens], nomes), SEM);
+  const extOrdem = lerOrdem(GEN.ITENS_ORDEM_FLUXO, null);
+  const nomesOrdem = cod => (extOrdem.empregados.find(e => e.codigo === cod) || {}).nome;
+  check('ordem do fluxo sem planilha: lê os 5 empregados (a a d) e não lê o (e)', extOrdem.empregados.length === 5 &&
+    Object.keys(O.nomesLidos).every(cod => nomesOrdem(cod) === O.nomesLidos[cod]), JSON.stringify(extOrdem.empregados));
+  check('(a) nome partido cujo último pedaço ("FREITAS") invade a coluna do cargo: "ALEX LUCIANO CHAVES DE FREITAS"',
+    nomesOrdem('601') === O.nomesLidos['601'], String(nomesOrdem('601')));
+  check('(b) nome inteiro num texto que passa da coluna do cargo: "ELIAS DE JESUS SOUZA RODRIGUES"',
+    nomesOrdem('602') === O.nomesLidos['602'], String(nomesOrdem('602')));
+  check('(c) "DA" e "SILVA" antes de "OPERADOR" no fluxo, à direita dele por x: nome completo',
+    nomesOrdem('603') === O.nomesLidos['603'], String(nomesOrdem('603')));
+  check('(d) "SIQUEIRA" e "JACOBS" sobre a coluna do cargo entram no nome', nomesOrdem('604') === O.nomesLidos['604'] &&
+    nomesOrdem('605') === O.nomesLidos['605'], JSON.stringify([nomesOrdem('604'), nomesOrdem('605')]));
+  check('(e) linha sem nenhum texto na coluna do cargo continua pendência (nome e cargo juntos), sem entrar',
+    !extOrdem.empregados.some(e => e.codigo === O.pendenteSemCargo) &&
+    extOrdem.pendencias.some(p => p.tipo === 'nome_e_cargo_no_mesmo_trecho' && p.codigo === O.pendenteSemCargo),
+  JSON.stringify(extOrdem.pendencias));
+  check('a única pendência "nome e cargo juntos" é a do caso (e)', extOrdem.pendencias.filter(p => p.tipo === 'nome_e_cargo_no_mesmo_trecho').length === 1,
+    JSON.stringify(extOrdem.pendencias));
+
+  // Com a planilha: o prefixo de palavras reforça, e o cruzamento sai como esperado
+  const extOrdemPl = lerOrdem(GEN.ITENS_ORDEM_FLUXO, GEN.PLANILHA_ORDEM_FLUXO.map(p => p[1]));
+  const nomeOrdemPl = cod => (extOrdemPl.empregados.find(e => e.codigo === cod) || {}).nome;
+  check('com a planilha: os 5 nomes lidos batem com os da planilha (mesmo nome normalizado)', extOrdemPl.empregados.length === 5 &&
+    Object.keys(O.nomesLidos).every(cod => Core.normalizarNome(nomeOrdemPl(cod)) === O.nomesLidos[cod]), JSON.stringify(extOrdemPl.empregados));
+  const lidoOrdem = Core.lerLancamentos(XLSX, XLSX.read(GEN.gerarPlanilhaOrdemFluxo(), { type: 'buffer' }));
+  const casOrdem = Core.casarEmpregados(lidoOrdem.linhas, extOrdemPl.empregados);
+  const cruzOrdem = Array.from(casOrdem.values()).filter(c => c.tipo === 'exato').length;
+  const semParOrdem = Array.from(casOrdem.values()).filter(c => c.tipo === 'sem_par').map(c => c.nome);
+  check('cruzaram com a planilha: 5 de 6 nomes, e só "Fulano Sem Par" fica sem par', cruzOrdem === O.cruzados &&
+    casOrdem.size === GEN.PLANILHA_ORDEM_FLUXO.length && semParOrdem.join() === O.semPar.join(), cruzOrdem + ' de ' + casOrdem.size + ': ' + semParOrdem.join());
+  check('nenhum nome do caso de ordem do fluxo fica ambíguo', !Array.from(casOrdem.values()).some(c => c.tipo === 'ambiguo'));
+  check('pendência do caso (e) fica fora do TXT e não bloqueia', !lidoOrdem.pendencias.some(p => p.bloqueia) &&
+    Core.gerarTxt({ empresa: '7', lancamentos: lidoOrdem.linhas, pendencias: lidoOrdem.pendencias, casamento: casOrdem }).bloqueado === false);
+
+  // Sensibilidade: com os mesmos textos reordenados por x (a leitura antiga), o caso (c) sai diferente
+  const porX = GEN.ITENS_ORDEM_FLUXO.slice().sort((a, b) => b.y - a.y || a.x - b.x);
+  const extPorX = lerOrdem(porX, null);
+  const nomePorX = cod => (extPorX.empregados.find(e => e.codigo === cod) || {}).nome;
+  check('se os textos forem ordenados por x, o caso (c) muda (o teste pega a volta da ordenação)',
+    nomePorX('603') !== O.nomesLidos['603'], String(nomePorX('603')));
+
+  // ---- Igualdade exata e extensão (SYN-169, decisão do Pedro) ----
+  // A planilha só pode ESTENDER o nome lido do PDF, nunca encurtá-lo. Uma extensão vale só com um candidato.
+  console.log('\nMédias → Domínio: nome lido x nome da planilha (igualdade exata, extensão e travas)');
+  const paginaNomes = CAB.concat([
+    { s: '107', x: 30, y: 680, w: 15 }, { s: 'MARIA JOSE', x: 100, y: 680, w: 60 }, { s: 'ANALISTA', x: 300, y: 680, w: 50 },
+    { s: '108', x: 30, y: 660, w: 15 }, { s: 'JOSE', x: 100, y: 660, w: 25 }, { s: 'OPERADOR', x: 300, y: 660, w: 50 }
+  ]);
+  const extMaria = seguro(() => Core.extrairEmpregadosDeItens([paginaNomes], ['Maria']), SEM);
+  check('"Maria" (planilha) não casa com "MARIA JOSE" (PDF): a linha sai com o nome do PDF e "Maria" fica sem par',
+    (extMaria.empregados.find(e => e.codigo === '107') || {}).nome === 'MARIA JOSE' &&
+    Core.casarEmpregados([{ matricula: '001', nome: 'Maria' }], extMaria.empregados).get('MARIA').tipo === 'sem_par',
+  JSON.stringify(extMaria.empregados));
+  const extExato = seguro(() => Core.extrairEmpregadosDeItens([paginaNomes], ['Maria Jose']), SEM);
+  const exatoM = extExato.empregados.find(e => e.codigo === '107') || {};
+  check('igualdade exata: "Maria Jose" da planilha casa com "MARIA JOSE" e não é parcial', exatoM.nome === 'Maria Jose' && exatoM.parcial === false,
+    JSON.stringify(exatoM));
+  const extUnica = seguro(() => Core.extrairEmpregadosDeItens([paginaNomes], ['Jose Maria Silva']), SEM);
+  const unicaJ = extUnica.empregados.find(e => e.codigo === '108') || {};
+  const casUnica = Core.casarEmpregados([{ matricula: '002', nome: 'Jose Maria Silva' }], extUnica.empregados).get('JOSE MARIA SILVA');
+  check('extensão única ("JOSE" do PDF + "Jose Maria Silva" da planilha) vale e sai marcada como parcial',
+    unicaJ.nome === 'Jose Maria Silva' && unicaJ.parcial === true && casUnica.tipo === 'exato' && casUnica.parcial === true,
+  JSON.stringify(unicaJ));
+  const extAmbig = seguro(() => Core.extrairEmpregadosDeItens([paginaNomes], ['Jose Maria Silva', 'Jose Carlos Souza']), SEM);
+  check('extensão com dois candidatos vira pendência ambígua (nome parcial), sem código',
+    !extAmbig.empregados.some(e => e.codigo === '108') &&
+    extAmbig.pendencias.some(p => p.tipo === 'nome_parcial_ambiguo' && p.codigo === '108'), JSON.stringify(extAmbig.pendencias));
+  check('formato real: "FRANCIELE FERREIRA DA" + "SILVA OPERADOR" sai como parcial; "MARCOS..." (sem cargo no mesmo texto) não',
+    seguro(() => Core.extrairEmpregadosDeItens([GEN.ITENS_FORMATO_REAL], GEN.PLANILHA_COMPETENCIA.map(p => p[1])), SEM).empregados
+      .filter(e => e.parcial).map(e => e.codigo).join() === '304');
 };

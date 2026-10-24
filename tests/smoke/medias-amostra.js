@@ -130,7 +130,75 @@ function gerarRelacaoPdfFormatoReal() {
   return pdfSintetico(ITENS_FORMATO_REAL);
 }
 
+// ---- Ordem do fluxo (SYN-169) ----
+// Os textos de cada linha estão escritos NA ORDEM DO FLUXO do PDF (a ordem do conteúdo, que o pdf.js entrega),
+// não na ordem por x. Cabeçalho "Código Nome" como no formato real: nome na coluna x=32, cargo na x=159,7.
+// Casos: (a) nome partido cujo último pedaço começa antes da coluna do cargo e a invade; (b) nome inteiro num
+// texto que passa da coluna do cargo; (c) pedaços do nome escritos antes do cargo mas à direita dele por x;
+// (d) duas variantes com último pedaço curto sobre o cargo; (e) linha sem nenhum texto na coluna do cargo.
+// Nomes e códigos inventados. As larguras são explícitas, para o caso ficar controlado.
+const ITENS_ORDEM_FLUXO = [
+  { s: 'Relação de Empregados (AMOSTRA SINTÉTICA)', x: 40, y: 760, w: larg('Relação de Empregados (AMOSTRA SINTÉTICA)') },
+  { s: 'Código Nome', x: 0, y: 720, w: 51, tamanho: 8.3 },
+  { s: 'Cargo', x: 159.7, y: 720, w: 30 }
+];
+[
+  // (a) "FREITAS" começa em x=138,2 (antes do cargo) e avança sobre "GERENTE" (x=159,7)
+  [{ s: '601 ALEX LUCIANO CHAVES DE', x: 13.6, w: 120 }, { s: 'FREITAS', x: 138.2, w: 39.2 },
+    { s: 'GERENTE', x: 159.7, w: 44.8 }, { s: 'REGIONAL', x: 207, w: 50.4 }],
+  // (b) o nome inteiro num texto só, que passa da coluna do cargo; o cargo vem depois
+  [{ s: '602 ELIAS DE JESUS SOUZA RODRIGUES', x: 13.6, w: 157 }, { s: 'OPERADOR', x: 159.7, w: 44.8 }],
+  // (c) "DA" e "SILVA" vêm antes de "OPERADOR" no fluxo, mas começam à direita dele (x=165,9 e 179,8)
+  [{ s: '603 CLEIDES DOS SANTOS CONCEICAO', x: 13.6, w: 120 }, { s: 'DA', x: 165.9, w: 11.2 },
+    { s: 'SILVA', x: 179.8, w: 28 }, { s: 'OPERADOR', x: 159.7, w: 44.8 }],
+  // (d) último pedaço curto ("SIQUEIRA", x=152,1; "JACOBS", x=138,2) sobre a coluna do cargo, antes dele no fluxo
+  [{ s: '604 EDUARDA FERREIRA SILVEIRA', x: 13.6, w: 122.4 }, { s: 'SIQUEIRA', x: 152.1, w: 44.8 },
+    { s: 'AUXILIAR', x: 159.7, w: 44.8 }],
+  [{ s: '605 DAVID HENRIQUE CARDOSO', x: 13.6, w: 122.4 }, { s: 'JACOBS', x: 138.2, w: 33.6 },
+    { s: 'ANALISTA', x: 159.7, w: 44.8 }],
+  // (e) nenhum texto na coluna do cargo: continua pendência
+  [{ s: '606 ROBERTO LIMA NUNES', x: 13.6, w: 110 }]
+].forEach((linha, i) => {
+  const y = 700 - i * 20;
+  linha.forEach(t => ITENS_ORDEM_FLUXO.push(Object.assign({ y }, t)));
+});
+
+// Planilha de apuração do caso de ordem do fluxo: um nome por empregado da Relação (exceto (e)), mais um sem par.
+const PLANILHA_ORDEM_FLUXO = [
+  ['701', 'Alex Luciano Chaves de Freitas'], ['702', 'Elias de Jesus Souza Rodrigues'],
+  ['703', 'Cleides dos Santos Conceicao da Silva'], ['704', 'Eduarda Ferreira Silveira Siqueira'],
+  ['705', 'David Henrique Cardoso Jacobs'], ['706', 'Fulano Sem Par']
+];
+
+// Resultado esperado para o caso de ordem do fluxo: 5 lidos (a-d), (e) pendente, 5 cruzados, 1 sem par.
+const ORDEM_FLUXO = {
+  nomesLidos: {
+    '601': 'ALEX LUCIANO CHAVES DE FREITAS',
+    '602': 'ELIAS DE JESUS SOUZA RODRIGUES',
+    '603': 'CLEIDES DOS SANTOS CONCEICAO DA SILVA',
+    '604': 'EDUARDA FERREIRA SILVEIRA SIQUEIRA',
+    '605': 'DAVID HENRIQUE CARDOSO JACOBS'
+  },
+  pendenteSemCargo: '606',
+  cruzados: 5,
+  semPar: ['Fulano Sem Par']
+};
+
+function gerarPlanilhaOrdemFluxo() {
+  const cab = CABECALHO.map(c => (c === 'Competência MM/AAAA' ? 'Competência' : c));
+  const aoa = [['AMOSTRA SINTÉTICA: não é dado real'], [], cab].concat(PLANILHA_ORDEM_FLUXO.map(([mat, nome]) =>
+    cab.map(c => (c === 'Matrícula' ? mat : c === 'Empregado' ? nome : c === 'Competência' ? '09/2026' : (c === 'HE 50% (h:mm)' ? '1:00' : null)))));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Lançamentos por competência');
+  return Buffer.from(XLSX.write(wb, { type: 'array', bookType: 'xlsx' }));
+}
+
+function gerarRelacaoPdfOrdemFluxo() {
+  return pdfSintetico(ITENS_ORDEM_FLUXO);
+}
+
 module.exports = {
   gerarPlanilhaMedias, gerarRelacaoPdf, TXT_ESPERADO,
-  ITENS_FORMATO_REAL, PLANILHA_COMPETENCIA, FORMATO_REAL, gerarPlanilhaCompetencia, gerarRelacaoPdfFormatoReal
+  ITENS_FORMATO_REAL, PLANILHA_COMPETENCIA, FORMATO_REAL, gerarPlanilhaCompetencia, gerarRelacaoPdfFormatoReal,
+  ITENS_ORDEM_FLUXO, PLANILHA_ORDEM_FLUXO, ORDEM_FLUXO, gerarPlanilhaOrdemFluxo, gerarRelacaoPdfOrdemFluxo
 };

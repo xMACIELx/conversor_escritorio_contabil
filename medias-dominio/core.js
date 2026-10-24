@@ -41,7 +41,7 @@
         return;
       }
       const cands = porNome.get(k) || [];
-      if (cands.length === 1) res.set(k, { tipo: 'exato', nome: g.nome, codigo: cands[0].codigo });
+      if (cands.length === 1) res.set(k, { tipo: 'exato', nome: g.nome, codigo: cands[0].codigo, parcial: !!cands[0].parcial });
       else if (cands.length > 1) res.set(k, { tipo: 'ambiguo', nome: g.nome, candidatos: cands.map(c => c.codigo), motivo: 'mais de um empregado com este nome na Relação' });
       else res.set(k, { tipo: 'sem_par', nome: g.nome, motivo: 'nome não encontrado na Relação de Empregados' });
     });
@@ -50,16 +50,16 @@
 
   // ---------- Relação de Empregados (PDF) ----------
   // Agrupa itens de texto em linhas pelo y. itens: [{ s, x, y, w }] (w = largura; opcional)
+  // Dentro de cada linha, os itens ficam na ordem do fluxo do arquivo (a ordem do pdf.js), não por x:
+  // o nome pode ser escrito em pedaços fora da ordem da coluna (ver extrairEmpregadosDeItens).
   function agruparLinhas(itens) {
-    const ord = itens.filter(i => texto(i.s) !== '')
-      .map(i => ({ s: texto(i.s), x: i.x, y: i.y, w: i.w || 0 }))
-      .sort((a, b) => b.y - a.y || a.x - b.x);
     const linhas = [];
-    ord.forEach(i => {
-      const l = linhas.find(r => Math.abs(r.y - i.y) <= CFG.TOLERANCIA_Y_PT);
-      if (l) l.items.push(i); else linhas.push({ y: i.y, items: [i] });
+    itens.filter(i => texto(i.s) !== '').forEach(i => {
+      const item = { s: texto(i.s), x: i.x, y: i.y, w: i.w || 0 };
+      const l = linhas.find(r => Math.abs(r.y - item.y) <= CFG.TOLERANCIA_Y_PT);
+      if (l) l.items.push(item); else linhas.push({ y: item.y, items: [item] });
     });
-    return linhas.sort((a, b) => b.y - a.y).map(l => ({ items: l.items.sort((a, b) => a.x - b.x) }));
+    return linhas.sort((a, b) => b.y - a.y).map(l => ({ items: l.items }));
   }
 
   // Posição das colunas Código, Nome e Cargo na linha de cabeçalho (ou null se não for o cabeçalho).
@@ -117,21 +117,23 @@
     return t.replace(/\s+/g, ' ').trim();
   }
 
-  // paginas: [ [ { s, x, y, w } ] ] (um array de itens por página).
-  // nomesPlanilha (opcional): nomes da planilha de apuração. Uma linha em que o texto avança sobre a coluna do
-  // cargo (ou tem texto na coluna do cargo) é casada pelo prefixo de palavras com esses nomes; escolhe o mais
-  // longo. Sem casamento, cruzando o cargo, vira pendência; a linha sem texto no cargo segue o caminho normal.
+  // paginas: [ [ { s, x, y, w } ] ] (um array de itens por página, na ordem do fluxo do pdf.js).
+  // O nome de cada linha são os textos da linha, na ordem do fluxo, ANTES do primeiro texto que começa na coluna
+  // do cargo (x dentro da tolerância). Os textos seguintes (cargo, categoria) não entram.
+  // nomesPlanilha (opcional): nomes da planilha de apuração. Com a planilha, o nome lido só casa por igualdade exata
+  // ou por extensão (um nome da planilha que começa com o nome lido + espaço; marcado parcial: true). Ver o bloco abaixo.
+  // Sem nenhum texto na coluna do cargo, só o prefixo de palavras da planilha separa o nome; sem casamento, pendência.
   // Sem nomesPlanilha, o comportamento é só o de separar a coluna do nome.
-  // Retorna { empregados: [{ codigo, nome, pagina }], pendencias: [{ tipo, pagina, codigo, detalhe }] }
+  // Retorna { empregados: [{ codigo, nome, pagina, parcial }], pendencias: [{ tipo, pagina, codigo, detalhe }] }
   function extrairEmpregadosDeItens(paginas, nomesPlanilha) {
     const empregados = [], pendencias = [], vistos = new Set();
     const T = CFG.TOLERANCIA_X_PT;
     const nomes = (nomesPlanilha || []).map(n => ({ original: texto(n), norm: normalizarNome(n) })).filter(n => n.norm !== '');
-    const adicionar = (codigo, nome, pagina) => {
+    const adicionar = (codigo, nome, pagina, parcial) => {
       const chave = codigo + '|' + normalizarNome(nome);
       if (vistos.has(chave)) return;
       vistos.add(chave);
-      empregados.push({ codigo, nome, pagina });
+      empregados.push({ codigo, nome, pagina, parcial: !!parcial });
     };
     let cab = null;
     paginas.forEach((itens, p) => {
@@ -143,20 +145,34 @@
         const it = separarCodigoNome(linha.items, cab);
         const cod = it.find(i => /^\d+$/.test(i.s) && i.x < cab.nome - T);
         if (!cod) return; // título, rodapé, totais: não é linha de empregado
-        const daNome = it.filter(i => i !== cod && i.x >= cab.nome - T);
-        const cruza = daNome.find(i => i.x < cab.cargo - T && i.x + i.w > cab.cargo + T);
-        const temCargo = daNome.some(i => i.x >= cab.cargo - T);
-        if (nomes.length && (cruza || temCargo)) {
-          const casado = nomeDaPlanilhaNoTexto(juntarTexto(daNome), nomes);
+        const daNome = it.filter(i => i !== cod && i.x >= cab.nome - T); // ordem do fluxo
+        const ini = daNome.findIndex(i => Math.abs(i.x - cab.cargo) <= T); // primeiro texto na coluna do cargo
+        if (ini < 0) {
+          // Sem nenhum texto na coluna do cargo: só o prefixo de palavras da planilha separa o nome (como antes)
+          const casado = nomes.length ? nomeDaPlanilhaNoTexto(juntarTexto(daNome), nomes) : null;
           if (casado) { adicionar(cod.s, casado.original, pagina); return; }
-        }
-        if (cruza) {
           pendencias.push({ tipo: 'nome_e_cargo_no_mesmo_trecho', pagina, codigo: cod.s,
-            detalhe: 'Texto "' + cruza.s + '" avança até a coluna do cargo. Não separei o nome; confira esta linha no PDF.' });
+            detalhe: 'Nenhum texto começa na coluna do cargo. Não separei o nome; confira esta linha no PDF.' });
           return;
         }
-        const nome = juntarTexto(daNome.filter(i => i.x < cab.cargo - T));
+        const nome = juntarTexto(daNome.slice(0, ini));
         if (nome === '') { pendencias.push({ tipo: 'codigo_sem_nome', pagina, codigo: cod.s, detalhe: 'Código sem nome na mesma linha.' }); return; }
+        // Com a planilha: igualdade exata primeiro. Sem igual, a planilha só pode ESTENDER o nome lido
+        // (o nome do PDF é início de palavras do nome da planilha), nunca encurtá-lo.
+        // Uma única extensão vale, marcada como parcial; duas ou mais viram pendência ambígua.
+        if (nomes.length) {
+          const norm = normalizarNome(nome);
+          const exato = nomes.find(n => n.norm === norm);
+          if (exato) { adicionar(cod.s, exato.original, pagina); return; }
+          const extensoes = nomes.filter(n => n.norm.startsWith(norm + ' '));
+          if (extensoes.length > 1) {
+            pendencias.push({ tipo: 'nome_parcial_ambiguo', pagina, codigo: cod.s,
+              detalhe: 'O nome "' + nome + '" do PDF é início de ' + extensoes.length + ' nomes da planilha (' +
+                extensoes.map(n => n.original).join(', ') + '). Não cruzei; confira.' });
+            return;
+          }
+          if (extensoes.length === 1) { adicionar(cod.s, extensoes[0].original, pagina, true); return; }
+        }
         adicionar(cod.s, nome, pagina);
       });
     });
